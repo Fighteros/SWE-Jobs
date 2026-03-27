@@ -22,8 +22,7 @@ def fetch_findwork() -> list[Job]:
     for search in ["software engineer", "backend developer", "frontend developer",
                     "flutter developer", "mobile developer", "data scientist",
                     "devops engineer", "machine learning"]:
-        data = get_json(URL, params={"search": search, "remote": "true",
-                                     "order_by": "-date_posted"},
+        data = get_json(URL, params={"search": search, "remote": "true"},
                        headers=headers)
         if not data or "results" not in data:
             continue
