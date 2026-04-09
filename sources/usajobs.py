@@ -2,7 +2,7 @@
 
 import os
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
 
 log = logging.getLogger(__name__)
@@ -64,10 +64,10 @@ def fetch_usajobs() -> list[Job]:
                 location=location,
                 url=apply_url or url,
                 source="usajobs",
-                salary=salary,
+                salary_raw=salary,
                 job_type=job_type,
                 tags=[],
                 is_remote=True,
             ))
-    log.info(f"USAJobs: fetched {len(jobs)} jobs.")
+    log.debug(f"USAJobs: fetched {len(jobs)} jobs.")
     return jobs

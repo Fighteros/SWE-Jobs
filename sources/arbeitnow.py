@@ -1,7 +1,7 @@
 """Arbeitnow — free job board API."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
 
 log = logging.getLogger(__name__)
@@ -27,10 +27,10 @@ def fetch_arbeitnow() -> list[Job]:
             location=item.get("location", ""),
             url=item.get("url", ""),
             source="arbeitnow",
-            salary="",
+            salary_raw="",
             job_type="",
             tags=tags,
             is_remote=is_remote,
         ))
-    log.info(f"Arbeitnow: fetched {len(jobs)} jobs.")
+    log.debug(f"Arbeitnow: fetched {len(jobs)} jobs.")
     return jobs

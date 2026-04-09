@@ -7,7 +7,7 @@ Searches for Egypt, Saudi Arabia, and remote jobs.
 import logging
 import re
 import time
-from models import Job
+from core.models import Job
 from sources.http_utils import get_text
 
 log = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ def fetch_linkedin() -> list[Job]:
 
         time.sleep(REQUEST_DELAY)
 
-    log.info(f"LinkedIn: fetched {len(jobs)} jobs.")
+    log.debug(f"LinkedIn: fetched {len(jobs)} jobs.")
     return jobs
 
 

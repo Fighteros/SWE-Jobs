@@ -1,9 +1,9 @@
 """JSearch (RapidAPI) — aggregates LinkedIn, Indeed, Glassdoor, etc."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import RAPIDAPI_KEY
+from core.config import RAPIDAPI_KEY
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def fetch_jsearch() -> list[Job]:
 
     jobs = []
     for params in SEARCHES:
-        data = get_json(URL, params=params, headers=headers)
+        data = get_json(URL, params=params, headers=headers, timeout=30)
         if not data or "data" not in data:
             continue
         for item in data["data"]:
@@ -84,7 +84,7 @@ def fetch_jsearch() -> list[Job]:
                 location=location or "Not specified",
                 url=item.get("job_apply_link", ""),
                 source="jsearch",
-                salary=salary,
+                salary_raw=salary,
                 job_type=(item.get("job_employment_type") or "").replace("FULLTIME", "Full Time")
                     .replace("PARTTIME", "Part Time").replace("CONTRACTOR", "Contract")
                     .replace("INTERN", "Internship"),
@@ -92,7 +92,7 @@ def fetch_jsearch() -> list[Job]:
                 is_remote=item.get("job_is_remote", False),
                 original_source=original_source,
             ))
-    log.info(f"JSearch: fetched {len(jobs)} jobs.")
+    log.debug(f"JSearch: fetched {len(jobs)} jobs.")
     return jobs
 
 

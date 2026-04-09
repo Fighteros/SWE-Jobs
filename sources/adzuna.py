@@ -1,9 +1,9 @@
 """Adzuna — job aggregator API (free tier, needs app_id + app_key)."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import ADZUNA_APP_ID, ADZUNA_APP_KEY
+from core.config import ADZUNA_APP_ID, ADZUNA_APP_KEY
 
 log = logging.getLogger(__name__)
 
@@ -59,11 +59,11 @@ def fetch_adzuna() -> list[Job]:
                 location=location,
                 url=item.get("redirect_url", ""),
                 source="adzuna",
-                salary=salary,
+                salary_raw=salary,
                 job_type=item.get("contract_time", ""),
                 tags=[item.get("category", {}).get("label", "")],
                 is_remote="remote" in item.get("title", "").lower() or
                           "remote" in item.get("description", "").lower()[:200],
             ))
-    log.info(f"Adzuna: fetched {len(jobs)} jobs.")
+    log.debug(f"Adzuna: fetched {len(jobs)} jobs.")
     return jobs

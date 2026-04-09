@@ -1,7 +1,7 @@
 """The Muse — free API for job listings and company profiles."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
 
 log = logging.getLogger(__name__)
@@ -60,5 +60,5 @@ def fetch_themuse() -> list[Job]:
                     tags=tag_names,
                     is_remote=is_remote,
                 ))
-    log.info(f"The Muse: fetched {len(jobs)} jobs.")
+    log.debug(f"The Muse: fetched {len(jobs)} jobs.")
     return jobs

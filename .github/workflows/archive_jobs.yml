@@ -1,0 +1,56 @@
+name: Archive Old Jobs
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Every Sunday at 3am UTC
+  workflow_dispatch:
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Archive old jobs
+        env:
+          DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
+          DB_NAME: ${{ secrets.SUPABASE_DB_NAME }}
+          DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          python -c "
+          from core import db
+
+          # Move jobs older than 7 days to archive
+          moved = db._execute('''
+              WITH moved AS (
+                  DELETE FROM jobs
+                  WHERE created_at < now() - interval '7 days'
+                    AND sent_at IS NOT NULL
+                  RETURNING *
+              )
+              INSERT INTO jobs_archive
+              SELECT * FROM moved
+              ON CONFLICT (unique_id) DO NOTHING
+          ''')
+          print('Archive complete')
+
+          # Delete archived jobs older than 90 days
+          db._execute('''
+              DELETE FROM jobs_archive
+              WHERE created_at < now() - interval '90 days'
+          ''')
+          print('Pruned old archive entries')
+          "

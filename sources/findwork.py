@@ -1,9 +1,9 @@
 """Findwork.dev — API focused on software development jobs."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import FINDWORK_API_KEY
+from core.config import FINDWORK_API_KEY
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +25,10 @@ def fetch_findwork() -> list[Job]:
         data = get_json(URL, params={"search": search, "remote": "true"},
                        headers=headers)
         if not data or "results" not in data:
+            # If first query fails, likely a bad API key — skip remaining
+            if not jobs and data is None:
+                log.warning("Findwork: API request failed — check FINDWORK_API_KEY.")
+                return []
             continue
         for item in data["results"]:
             keywords = item.get("keywords", []) or []
@@ -35,10 +39,10 @@ def fetch_findwork() -> list[Job]:
                 location=item.get("location", "Remote"),
                 url=item.get("url", ""),
                 source="findwork",
-                salary="",
+                salary_raw="",
                 job_type=item.get("employment_type", ""),
                 tags=keywords,
                 is_remote=item.get("remote", False),
             ))
-    log.info(f"Findwork: fetched {len(jobs)} jobs.")
+    log.debug(f"Findwork: fetched {len(jobs)} jobs.")
     return jobs

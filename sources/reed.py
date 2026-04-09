@@ -2,9 +2,9 @@
 
 import logging
 import base64
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import REED_API_KEY
+from core.config import REED_API_KEY
 
 log = logging.getLogger(__name__)
 
@@ -48,11 +48,11 @@ def fetch_reed() -> list[Job]:
                 location=item.get("locationName", ""),
                 url=job_url,
                 source="reed",
-                salary=salary,
+                salary_raw=salary,
                 job_type=item.get("contractType", ""),
                 tags=[],
                 is_remote="remote" in item.get("jobTitle", "").lower() or
                           "remote" in item.get("jobDescription", "").lower()[:200],
             ))
-    log.info(f"Reed: fetched {len(jobs)} jobs.")
+    log.debug(f"Reed: fetched {len(jobs)} jobs.")
     return jobs

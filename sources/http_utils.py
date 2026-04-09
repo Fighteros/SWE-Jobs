@@ -4,7 +4,7 @@ Shared HTTP helpers with session reuse, timeouts, and error handling.
 
 import logging
 import requests
-from config import REQUEST_TIMEOUT
+from core.config import REQUEST_TIMEOUT
 
 log = logging.getLogger(__name__)
 

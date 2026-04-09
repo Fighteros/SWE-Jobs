@@ -1,7 +1,7 @@
 """Remotive — remote jobs API (software-dev, qa, devops-sysadmin)."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
 
 log = logging.getLogger(__name__)
@@ -25,10 +25,10 @@ def fetch_remotive() -> list[Job]:
                 location=item.get("candidate_required_location", "Anywhere"),
                 url=item.get("url", ""),
                 source="remotive",
-                salary=item.get("salary", ""),
+                salary_raw=item.get("salary", ""),
                 job_type=item.get("job_type", "").replace("_", " ").title(),
                 tags=[item.get("category", "")],
                 is_remote=True,
             ))
-    log.info(f"Remotive: fetched {len(jobs)} jobs.")
+    log.debug(f"Remotive: fetched {len(jobs)} jobs.")
     return jobs

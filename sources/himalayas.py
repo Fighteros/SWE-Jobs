@@ -1,7 +1,7 @@
 """Himalayas — free remote jobs API (no key required)."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
 
 log = logging.getLogger(__name__)
@@ -31,12 +31,12 @@ def fetch_himalayas() -> list[Job]:
                 location=location or "Remote",
                 url=item.get("applicationLink") or f"https://himalayas.app/jobs/{item.get('slug', '')}",
                 source="himalayas",
-                salary=_format_salary(item),
+                salary_raw=_format_salary(item),
                 job_type=item.get("employmentType", ""),
                 tags=item.get("categories", []) or [],
                 is_remote=remote,
             ))
-    log.info(f"Himalayas: fetched {len(jobs)} jobs.")
+    log.debug(f"Himalayas: fetched {len(jobs)} jobs.")
     return jobs
 
 

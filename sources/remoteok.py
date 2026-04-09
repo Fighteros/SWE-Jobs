@@ -1,7 +1,7 @@
 """RemoteOK — public JSON feed."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
 
 log = logging.getLogger(__name__)
@@ -30,10 +30,10 @@ def fetch_remoteok() -> list[Job]:
             location=item.get("location", "Remote"),
             url=item.get("url", f"https://remoteok.com/remote-jobs/{item.get('id', '')}"),
             source="remoteok",
-            salary=salary,
+            salary_raw=salary,
             job_type="",
             tags=item.get("tags", []) or [],
             is_remote=True,
         ))
-    log.info(f"RemoteOK: fetched {len(jobs)} jobs.")
+    log.debug(f"RemoteOK: fetched {len(jobs)} jobs.")
     return jobs
