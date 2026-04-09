@@ -2,9 +2,9 @@
 
 import logging
 import base64
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import REED_API_KEY
+from core.config import REED_API_KEY
 
 log = logging.getLogger(__name__)
 

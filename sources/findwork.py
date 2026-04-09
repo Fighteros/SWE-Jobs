@@ -1,9 +1,9 @@
 """Findwork.dev — API focused on software development jobs."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import FINDWORK_API_KEY
+from core.config import FINDWORK_API_KEY
 
 log = logging.getLogger(__name__)
 

@@ -1,9 +1,9 @@
 """JSearch (RapidAPI) — aggregates LinkedIn, Indeed, Glassdoor, etc."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import RAPIDAPI_KEY
+from core.config import RAPIDAPI_KEY
 
 log = logging.getLogger(__name__)
 

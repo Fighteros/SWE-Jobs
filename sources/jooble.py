@@ -1,9 +1,9 @@
 """Jooble — global job search API (POST-based, free key)."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import post_json
-from config import JOOBLE_API_KEY
+from core.config import JOOBLE_API_KEY
 
 log = logging.getLogger(__name__)
 

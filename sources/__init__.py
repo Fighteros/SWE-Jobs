@@ -1,6 +1,5 @@
 """
-Source registry — maps source names to their fetch functions.
-Import order determines fetch order.
+Source registry with circuit breaker integration.
 """
 
 from sources.remotive import fetch_remotive
@@ -19,21 +18,21 @@ from sources.jooble import fetch_jooble
 from sources.reed import fetch_reed
 from sources.usajobs import fetch_usajobs
 
-# (display_name, fetch_function)
+# (display_name, source_key, fetch_function)
 ALL_FETCHERS = [
-    ("Remotive",        fetch_remotive),
-    ("Himalayas",       fetch_himalayas),
-    ("Jobicy",          fetch_jobicy),
-    ("RemoteOK",        fetch_remoteok),
-    ("Arbeitnow",       fetch_arbeitnow),
-    ("WWR",             fetch_wwr),
-    ("Working Nomads",  fetch_workingnomads),
-    ("JSearch",         fetch_jsearch),
-    ("LinkedIn",        fetch_linkedin),
-    ("Adzuna",          fetch_adzuna),
-    ("The Muse",        fetch_themuse),
-    ("Findwork",        fetch_findwork),
-    ("Jooble",          fetch_jooble),
-    ("Reed",            fetch_reed),
-    ("USAJobs",         fetch_usajobs),
+    ("Remotive",        "remotive",       fetch_remotive),
+    ("Himalayas",       "himalayas",      fetch_himalayas),
+    ("Jobicy",          "jobicy",         fetch_jobicy),
+    ("RemoteOK",        "remoteok",       fetch_remoteok),
+    ("Arbeitnow",       "arbeitnow",      fetch_arbeitnow),
+    ("WWR",             "wwr",            fetch_wwr),
+    ("Working Nomads",  "workingnomads",  fetch_workingnomads),
+    ("JSearch",         "jsearch",        fetch_jsearch),
+    ("LinkedIn",        "linkedin",       fetch_linkedin),
+    ("Adzuna",          "adzuna",         fetch_adzuna),
+    ("The Muse",        "themuse",        fetch_themuse),
+    ("Findwork",        "findwork",       fetch_findwork),
+    ("Jooble",          "jooble",         fetch_jooble),
+    ("Reed",            "reed",           fetch_reed),
+    ("USAJobs",         "usajobs",        fetch_usajobs),
 ]

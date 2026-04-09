@@ -1,9 +1,9 @@
 """Adzuna — job aggregator API (free tier, needs app_id + app_key)."""
 
 import logging
-from models import Job
+from core.models import Job
 from sources.http_utils import get_json
-from config import ADZUNA_APP_ID, ADZUNA_APP_KEY
+from core.config import ADZUNA_APP_ID, ADZUNA_APP_KEY
 
 log = logging.getLogger(__name__)
 
