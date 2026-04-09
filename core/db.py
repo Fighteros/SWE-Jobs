@@ -7,6 +7,7 @@ connection pool. Import and call functions directly; no ORM involved.
 
 import json
 import logging
+import socket
 from contextlib import contextmanager
 from typing import Optional
 
@@ -36,10 +37,19 @@ def _get_pool() -> SimpleConnectionPool:
     """Lazy-initialise the connection pool on first use."""
     global _pool
     if _pool is None:
+        # Resolve to IPv4 — GitHub Actions runners may not support IPv6
+        try:
+            host_ipv4 = socket.getaddrinfo(
+                SUPABASE_DB_HOST, SUPABASE_DB_PORT,
+                socket.AF_INET, socket.SOCK_STREAM,
+            )[0][4][0]
+        except (socket.gaierror, IndexError):
+            host_ipv4 = SUPABASE_DB_HOST
+
         _pool = SimpleConnectionPool(
             minconn=1,
             maxconn=5,
-            host=SUPABASE_DB_HOST,
+            host=host_ipv4,
             port=SUPABASE_DB_PORT,
             dbname=SUPABASE_DB_NAME,
             user=SUPABASE_DB_USER,
