@@ -37,19 +37,32 @@ def _get_pool() -> SimpleConnectionPool:
     """Lazy-initialise the connection pool on first use."""
     global _pool
     if _pool is None:
-        # Resolve to IPv4 — GitHub Actions runners may not support IPv6
+        db_host = SUPABASE_DB_HOST
+
+        # Supabase direct hosts (db.xxx.supabase.co) are IPv6-only.
+        # GitHub Actions runners can't reach IPv6. Warn the user.
+        if db_host.startswith("db.") and db_host.endswith(".supabase.co"):
+            logger.warning(
+                "Direct Supabase host detected (IPv6-only). "
+                "If connection fails, set DB_HOST to your pooler endpoint: "
+                "aws-0-<region>.pooler.supabase.com"
+            )
+
+        # Try IPv4 resolution first, fall back to original host
         try:
-            host_ipv4 = socket.getaddrinfo(
-                SUPABASE_DB_HOST, SUPABASE_DB_PORT,
+            addrs = socket.getaddrinfo(
+                db_host, SUPABASE_DB_PORT,
                 socket.AF_INET, socket.SOCK_STREAM,
-            )[0][4][0]
-        except (socket.gaierror, IndexError):
-            host_ipv4 = SUPABASE_DB_HOST
+            )
+            if addrs:
+                db_host = addrs[0][4][0]
+        except socket.gaierror:
+            pass
 
         _pool = SimpleConnectionPool(
             minconn=1,
             maxconn=5,
-            host=host_ipv4,
+            host=db_host,
             port=SUPABASE_DB_PORT,
             dbname=SUPABASE_DB_NAME,
             user=SUPABASE_DB_USER,
