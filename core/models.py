@@ -75,6 +75,9 @@ class Job:
             self.topics = []
         if self.telegram_message_ids is None:
             self.telegram_message_ids = {}
+        # Some APIs return job_type as a list — coerce to string
+        if isinstance(self.job_type, list):
+            self.job_type = ", ".join(str(t) for t in self.job_type if t)
 
     # ─── Properties ─────────────────────────────────────────────
 

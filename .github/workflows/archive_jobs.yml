@@ -9,6 +9,7 @@ jobs:
   archive:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: bot
 
     steps:
       - name: Checkout
@@ -24,11 +25,11 @@ jobs:
 
       - name: Archive old jobs
         env:
-          DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
-          DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
-          DB_NAME: ${{ secrets.SUPABASE_DB_NAME }}
-          DB_USER: ${{ secrets.SUPABASE_DB_USER }}
-          DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           python -c "
           from core import db
