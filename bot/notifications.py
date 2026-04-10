@@ -144,8 +144,14 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
                 dm_count += 1
                 total_sent += 1
             except TelegramError as e:
-                if "bot was blocked" in str(e).lower() or "user not found" in str(e).lower():
-                    # User blocked the bot or deleted account — disable notifications
+                err = str(e).lower()
+                if any(phrase in err for phrase in (
+                    "bot was blocked", "user not found",
+                    "chat not found", "forbidden",
+                    "bot can't initiate conversation",
+                    "have no rights to send a message",
+                )):
+                    # User blocked bot, deleted account, or never started a DM
                     db._execute(
                         "UPDATE users SET notify_dm = FALSE WHERE telegram_id = %s",
                         (telegram_id,),

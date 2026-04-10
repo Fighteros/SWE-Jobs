@@ -59,6 +59,9 @@ def format_job_message(job: Job) -> str:
     if job.is_remote:
         lines.append("🌍 Remote")
 
+    if job.posted_display:
+        lines.append(f"🕐 Posted {job.posted_display}")
+
     lines.append("")
     lines.append(f'🔗 <a href="{job.url}">Apply Now</a>')
     lines.append(f"📡 Source: {source}")

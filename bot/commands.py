@@ -36,6 +36,25 @@ HELP_TEXT = """
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Ensure user exists in DB so DM alerts can reach them
+    user = update.effective_user
+    db.get_or_create_user(user.id, user.username or "")
+
+    # Handle deep link from group (/start subscribe)
+    if context.args and context.args[0] == "subscribe":
+        await update.message.reply_text(
+            "👋 Great, now I can send you DM alerts!\n\n"
+            "Let's set up your subscription:",
+            parse_mode="HTML",
+        )
+        context.user_data["sub_topics"] = set()
+        await update.message.reply_text(
+            "Step 1/4: Select topics you're interested in:\n"
+            "(tap to toggle, then press Done)",
+            reply_markup=topic_selection_keyboard(),
+        )
+        return
+
     await update.message.reply_text(
         "👋 Welcome! I post programming jobs from 23 sources.\n\n"
         "Use /subscribe to get personalized alerts, or /help for all commands.",
@@ -49,6 +68,17 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start the interactive subscription flow."""
+    # If subscribing from a group, remind user to start a private chat first
+    if update.effective_chat.type != "private":
+        bot_user = await context.bot.get_me()
+        await update.message.reply_text(
+            "⚠️ To receive DM alerts, you must first start a private chat with me.\n\n"
+            f"👉 <a href=\"https://t.me/{bot_user.username}?start=subscribe\">Click here to open a DM</a> "
+            "and send /subscribe there.",
+            parse_mode="HTML",
+        )
+        return
+
     context.user_data["sub_topics"] = set()
     await update.message.reply_text(
         "Step 1/4: Select topics you're interested in:\n"

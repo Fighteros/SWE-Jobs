@@ -8,6 +8,7 @@ import sys
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 
 from core.logging_config import setup_logging
 from core.config import MAX_JOBS_PER_RUN, SEED_MODE_ENV, TELEGRAM_BOT_TOKEN
@@ -85,8 +86,13 @@ async def main():
 
     inserted_rows = db.insert_jobs_batch(non_dupes)
     # Build (Job, db_id) list for sending
+    now = datetime.now(timezone.utc)
     uid_to_job = {job.unique_id: job for job in non_dupes}
-    inserted_jobs = [(uid_to_job[row["unique_id"]], row["id"]) for row in inserted_rows]
+    inserted_jobs = []
+    for row in inserted_rows:
+        job = uid_to_job[row["unique_id"]]
+        job.created_at = now  # just inserted
+        inserted_jobs.append((job, row["id"]))
     log.info(f"Inserted: {len(inserted_jobs)} jobs")
 
     # ── 7. Send or seed ─────────────────────────────────────

@@ -6,6 +6,7 @@ deduplication, DB persistence, and Telegram formatting.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 
@@ -67,6 +68,9 @@ class Job:
     # Telegram delivery tracking: {channel_key: message_id}
     telegram_message_ids: dict = field(default_factory=dict)
 
+    # Timestamp from DB (populated by from_db_row)
+    created_at: Optional[datetime] = None
+
     def __post_init__(self):
         # Ensure tags is never None
         if self.tags is None:
@@ -122,6 +126,38 @@ class Job:
             if keyword in text:
                 return em
         return DEFAULT_EMOJI
+
+    @property
+    def posted_display(self) -> str:
+        """Format 'posted X ago (date)' for display."""
+        if not self.created_at:
+            return ""
+        now = datetime.now(timezone.utc)
+        # Ensure created_at is timezone-aware
+        dt = self.created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        diff = now - dt
+        seconds = int(diff.total_seconds())
+        if seconds < 60:
+            ago = "just now"
+        elif seconds < 3600:
+            mins = seconds // 60
+            ago = f"{mins} min{'s' if mins != 1 else ''} ago"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            ago = f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif seconds < 2592000:  # ~30 days
+            days = seconds // 86400
+            ago = f"{days} day{'s' if days != 1 else ''} ago"
+        elif seconds < 31536000:  # ~365 days
+            months = seconds // 2592000
+            ago = f"{months} month{'s' if months != 1 else ''} ago"
+        else:
+            years = seconds // 31536000
+            ago = f"{years} year{'s' if years != 1 else ''} ago"
+        date_str = dt.strftime("%b %d, %Y")
+        return f"{ago} ({date_str})"
 
     @property
     def salary_display(self) -> str:
@@ -193,4 +229,5 @@ class Job:
             topics=row.get("topics") or [],
             original_source=row.get("original_source", ""),
             telegram_message_ids=telegram_ids,
+            created_at=row.get("created_at"),
         )
