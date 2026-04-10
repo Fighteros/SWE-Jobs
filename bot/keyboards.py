@@ -79,6 +79,82 @@ def seniority_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMar
     return InlineKeyboardMarkup(buttons)
 
 
+LOCATION_OPTIONS = [
+    ("remote", "🌍 Remote Only"),
+    ("EG", "🇪🇬 Egypt"),
+    ("SA", "🇸🇦 Saudi Arabia"),
+    ("AE", "🇦🇪 UAE"),
+    ("US", "🇺🇸 USA"),
+    ("GB", "🇬🇧 UK"),
+    ("DE", "🇩🇪 Germany"),
+    ("CA", "🇨🇦 Canada"),
+    ("NL", "🇳🇱 Netherlands"),
+    ("IN", "🇮🇳 India"),
+    ("FR", "🇫🇷 France"),
+    ("PL", "🇵🇱 Poland"),
+    ("TR", "🇹🇷 Turkey"),
+]
+
+
+def location_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
+    """Build location selection keyboard for /subscribe."""
+    selected = selected or set()
+    buttons = []
+    row = []
+    for key, label in LOCATION_OPTIONS:
+        check = "✅ " if key in selected else ""
+        row.append(InlineKeyboardButton(
+            f"{check}{label}",
+            callback_data=f"sub_location:{key}",
+        ))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("✅ Done (or skip)", callback_data="sub_location_done")])
+    return InlineKeyboardMarkup(buttons)
+
+
+SOURCE_OPTIONS = [
+    ("linkedin", "LinkedIn"),
+    ("indeed", "Indeed"),
+    ("glassdoor", "Glassdoor"),
+    ("remotive", "Remotive"),
+    ("remoteok", "RemoteOK"),
+    ("wwr", "We Work Remotely"),
+    ("himalayas", "Himalayas"),
+    ("arbeitnow", "Arbeitnow"),
+    ("jobicy", "Jobicy"),
+    ("workingnomads", "Working Nomads"),
+    ("adzuna", "Adzuna"),
+    ("themuse", "The Muse"),
+    ("jooble", "Jooble"),
+    ("reed", "Reed"),
+    ("usajobs", "USAJobs"),
+]
+
+
+def source_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
+    """Build source/provider selection keyboard for /subscribe."""
+    selected = selected or set()
+    buttons = []
+    row = []
+    for key, label in SOURCE_OPTIONS:
+        check = "✅ " if key in selected else ""
+        row.append(InlineKeyboardButton(
+            f"{check}{label}",
+            callback_data=f"sub_source:{key}",
+        ))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("✅ Done (or skip for all)", callback_data="sub_source_done")])
+    return InlineKeyboardMarkup(buttons)
+
+
 def pagination_keyboard(current_page: int, total_pages: int, prefix: str) -> InlineKeyboardMarkup:
     """Build prev/next pagination buttons."""
     buttons = []

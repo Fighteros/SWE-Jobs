@@ -33,6 +33,34 @@ def _job_matches_subscription(job: Job, subs: dict) -> bool:
     if sub_seniority and job.seniority not in sub_seniority:
         return False
 
+    # Check sources — match against source key and original_source (for aggregators like JSearch)
+    sub_sources = set(subs.get("sources", []))
+    if sub_sources:
+        # Map display names back to source keys for aggregated sources
+        _DISPLAY_TO_KEY = {
+            "LinkedIn": "linkedin", "Indeed": "indeed",
+            "Glassdoor": "glassdoor", "ZipRecruiter": "ziprecruiter",
+            "Monster": "monster",
+        }
+        job_source_key = job.source
+        original_key = _DISPLAY_TO_KEY.get(job.original_source, "")
+        if job_source_key not in sub_sources and original_key not in sub_sources:
+            return False
+
+    # Check locations — "remote" matches is_remote, others match country code
+    sub_locations = subs.get("locations", [])
+    if sub_locations:
+        matched = False
+        for loc in sub_locations:
+            if loc == "remote" and job.is_remote:
+                matched = True
+                break
+            if loc == job.country:
+                matched = True
+                break
+        if not matched:
+            return False
+
     # Check keywords
     sub_keywords = subs.get("keywords", [])
     if sub_keywords:

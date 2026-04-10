@@ -42,6 +42,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_sub_seniority(query, user, context, data)
     elif data == "sub_seniority_done":
         await _handle_sub_seniority_done(query, user, context)
+    elif data.startswith("sub_location:"):
+        await _handle_sub_location(query, user, context, data)
+    elif data == "sub_location_done":
+        await _handle_sub_location_done(query, user, context)
+    elif data.startswith("sub_source:"):
+        await _handle_sub_source(query, user, context, data)
+    elif data == "sub_source_done":
+        await _handle_sub_source_done(query, user, context)
     elif data.startswith("saved_page:"):
         await _handle_saved_page(query, user, data)
     else:
@@ -159,7 +167,7 @@ async def _handle_sub_done(query, user, context) -> None:
     context.user_data["sub_seniority"] = set()
     from bot.keyboards import seniority_selection_keyboard
     await query.edit_message_text(
-        "Step 2/3: Select seniority levels (or skip):",
+        "Step 2/4: Select seniority levels (or skip for all):",
         reply_markup=seniority_selection_keyboard(),
     )
 
@@ -181,26 +189,104 @@ async def _handle_sub_seniority(query, user, context, data: str) -> None:
 
 
 async def _handle_sub_seniority_done(query, user, context) -> None:
-    """Seniority selection done, save subscription."""
+    """Seniority selection done, move to location."""
+    context.user_data["sub_locations"] = set()
+    from bot.keyboards import location_selection_keyboard
+    await query.edit_message_text(
+        "Step 3/4: Select preferred locations (or skip for all):",
+        reply_markup=location_selection_keyboard(),
+    )
+
+
+async def _handle_sub_location(query, user, context, data: str) -> None:
+    """Toggle a location in the subscription builder."""
+    location = data.split(":")[1]
+    selected = context.user_data.get("sub_locations", set())
+    if location in selected:
+        selected.discard(location)
+    else:
+        selected.add(location)
+    context.user_data["sub_locations"] = selected
+
+    from bot.keyboards import location_selection_keyboard
+    await query.edit_message_reply_markup(
+        reply_markup=location_selection_keyboard(selected)
+    )
+
+
+async def _handle_sub_location_done(query, user, context) -> None:
+    """Location selection done, move to source selection."""
+    context.user_data["sub_sources"] = set()
+    from bot.keyboards import source_selection_keyboard
+    await query.edit_message_text(
+        "Step 4/4: Select job sources (or skip for all):",
+        reply_markup=source_selection_keyboard(),
+    )
+
+
+async def _handle_sub_source(query, user, context, data: str) -> None:
+    """Toggle a source in the subscription builder."""
+    source = data.split(":")[1]
+    selected = context.user_data.get("sub_sources", set())
+    if source in selected:
+        selected.discard(source)
+    else:
+        selected.add(source)
+    context.user_data["sub_sources"] = selected
+
+    from bot.keyboards import source_selection_keyboard
+    await query.edit_message_reply_markup(
+        reply_markup=source_selection_keyboard(selected)
+    )
+
+
+async def _handle_sub_source_done(query, user, context) -> None:
+    """Source selection done, save subscription."""
     topics = list(context.user_data.get("sub_topics", set()))
     seniority = list(context.user_data.get("sub_seniority", set()))
+    locations = list(context.user_data.get("sub_locations", set()))
+    sources = list(context.user_data.get("sub_sources", set()))
 
     subscriptions = {"topics": topics}
     if seniority:
         subscriptions["seniority"] = seniority
+    if locations:
+        subscriptions["locations"] = locations
+    if sources:
+        subscriptions["sources"] = sources
 
     db_user = db.get_or_create_user(user.id, user.username or "")
     db.update_user_subscriptions(user.id, subscriptions)
 
-    summary = f"Topics: {', '.join(topics)}"
-    if seniority:
-        summary += f"\nSeniority: {', '.join(seniority)}"
+    summary = _format_sub_summary(topics, seniority, locations, sources)
 
     await query.edit_message_text(f"✅ Subscribed!\n\n{summary}\n\nYou'll receive DM alerts for matching jobs.")
 
     # Clean up temp data
     context.user_data.pop("sub_topics", None)
     context.user_data.pop("sub_seniority", None)
+    context.user_data.pop("sub_locations", None)
+    context.user_data.pop("sub_sources", None)
+
+
+def _format_sub_summary(topics, seniority, locations, sources) -> str:
+    """Build human-readable subscription summary."""
+    summary = f"Topics: {', '.join(topics)}"
+    if seniority:
+        summary += f"\nSeniority: {', '.join(seniority)}"
+    if locations:
+        from bot.keyboards import LOCATION_OPTIONS
+        label_map = dict(LOCATION_OPTIONS)
+        summary += f"\nLocations: {', '.join(label_map.get(l, l) for l in locations)}"
+    else:
+        summary += "\nLocations: All (no filter)"
+    if sources:
+        from bot.keyboards import SOURCE_OPTIONS
+        label_map = dict(SOURCE_OPTIONS)
+        summary += f"\nSources: {', '.join(label_map.get(s, s) for s in sources)}"
+    else:
+        summary += "\nSources: All (no filter)"
+    return summary
 
 
 async def _handle_saved_page(query, user, data: str) -> None:

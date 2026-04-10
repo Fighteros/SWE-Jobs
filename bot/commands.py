@@ -48,7 +48,8 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Start the interactive subscription flow."""
     context.user_data["sub_topics"] = set()
     await update.message.reply_text(
-        "Step 1/3: Select topics you're interested in:",
+        "Step 1/4: Select topics you're interested in:\n"
+        "(tap to toggle, then press Done)",
         reply_markup=topic_selection_keyboard(),
     )
 
@@ -74,6 +75,14 @@ async def cmd_mysubs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append(f"Topics: {', '.join(subs['topics'])}")
     if subs.get("seniority"):
         lines.append(f"Seniority: {', '.join(subs['seniority'])}")
+    if subs.get("locations"):
+        from bot.keyboards import LOCATION_OPTIONS
+        label_map = dict(LOCATION_OPTIONS)
+        lines.append(f"Locations: {', '.join(label_map.get(l, l) for l in subs['locations'])}")
+    if subs.get("sources"):
+        from bot.keyboards import SOURCE_OPTIONS
+        label_map = dict(SOURCE_OPTIONS)
+        lines.append(f"Sources: {', '.join(label_map.get(s, s) for s in subs['sources'])}")
     if subs.get("keywords"):
         lines.append(f"Keywords: {', '.join(subs['keywords'])}")
     if subs.get("min_salary"):
