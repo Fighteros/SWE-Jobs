@@ -76,9 +76,14 @@ async def send_job_to_topics(bot: Bot, job: Job, job_db_id: int) -> dict:
     keyboard = job_buttons(job_db_id)
     sent_messages = {}
 
+    if not job.topics:
+        log.warning(f"  ⚠ No topics assigned: {job.title}")
+        return sent_messages
+
     for topic_key in job.topics:
         thread_id = get_topic_thread_id(topic_key)
         if thread_id is None:
+            log.warning(f"  ⚠ Topic '{topic_key}' has no thread_id — env var not set?")
             continue
 
         topic_name = CHANNELS[topic_key]["name"]

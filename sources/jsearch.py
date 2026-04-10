@@ -1,6 +1,7 @@
 """JSearch (RapidAPI) — aggregates LinkedIn, Indeed, Glassdoor, etc."""
 
 import logging
+import time
 from core.models import Job
 from sources.http_utils import get_json
 from core.config import RAPIDAPI_KEY
@@ -59,7 +60,9 @@ def fetch_jsearch() -> list[Job]:
     }
 
     jobs = []
-    for params in SEARCHES:
+    for i, params in enumerate(SEARCHES):
+        if i > 0:
+            time.sleep(1.5)  # Rate-limit: avoid 429 from RapidAPI
         data = get_json(URL, params=params, headers=headers, timeout=30)
         if not data or "data" not in data:
             continue

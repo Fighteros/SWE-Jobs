@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+.env
+.git
+node_modules
+dashboard/node_modules
+dashboard/dist
+dashboard/.env
+tests/
+seen_jobs.json
+*.md
