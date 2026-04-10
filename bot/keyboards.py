@@ -23,6 +23,7 @@ def topic_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
     topics = [
         ("backend", "⚙️ Backend"),
         ("frontend", "🎨 Frontend"),
+        ("fullstack", "🔄 Full Stack"),
         ("mobile", "📱 Mobile"),
         ("devops", "🚀 DevOps"),
         ("qa", "🧪 QA"),

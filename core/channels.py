@@ -24,7 +24,6 @@ CHANNELS = {
         "keywords": [
             "backend", "back-end", "back end", "server-side", "server side",
             "api developer", "api engineer",
-            "full-stack", "full stack", "fullstack",
             "python developer", "python engineer",
             "java developer", "java engineer",
             "golang", "go developer", "go engineer",
@@ -42,7 +41,6 @@ CHANNELS = {
         "keywords": [
             "frontend", "front-end", "front end",
             "ui developer", "ui engineer",
-            "full-stack", "full stack", "fullstack",
             "react developer", "react engineer", "next.js",
             "angular developer", "vue developer", "vue.js",
             "javascript developer", "js developer",
@@ -140,6 +138,17 @@ CHANNELS = {
             "web3 developer", "web3 engineer", "web3",
             "crypto developer", "defi", "nft",
             "ethereum", "solana developer",
+        ],
+    },
+    "fullstack": {
+        "thread_env": "TOPIC_FULLSTACK",
+        "name": "🔄 Full Stack",
+        "keywords": [
+            "full-stack", "full stack", "fullstack",
+            "full-stack developer", "full stack developer", "fullstack developer",
+            "full-stack engineer", "full stack engineer", "fullstack engineer",
+            "mern", "mean stack", "lamp stack",
+            "t-shaped developer",
         ],
     },
     "egypt": {
