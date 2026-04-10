@@ -40,6 +40,20 @@ class TestEnrichJob:
         enriched = enrich_job(job)
         assert enriched.topics == ["general"]
 
+    def test_fullstack_excludes_backend_and_frontend(self):
+        job = _make_job(title="Full Stack Python Developer")
+        enriched = enrich_job(job)
+        assert "fullstack" in enriched.topics
+        assert "backend" not in enriched.topics
+        assert "frontend" not in enriched.topics
+
+    def test_fullstack_keeps_other_topics(self):
+        job = _make_job(title="Full Stack Developer", location="Cairo, Egypt")
+        enriched = enrich_job(job)
+        assert "fullstack" in enriched.topics
+        assert "egypt" in enriched.topics
+        assert "backend" not in enriched.topics
+
     def test_no_salary_leaves_none(self):
         job = _make_job(title="Dev", salary_raw="Competitive")
         enriched = enrich_job(job)

@@ -54,6 +54,10 @@ def _route_topics(job: Job) -> list[str]:
             if _match_keywords(searchable, ch["keywords"]):
                 topics.append(key)
 
+    # Fullstack is exclusive — don't also send to backend/frontend
+    if "fullstack" in topics:
+        topics = [t for t in topics if t not in ("backend", "frontend")]
+
     # Use general/ALL topics only as fallback when nothing else matched
     if not topics:
         topics = fallback_keys
