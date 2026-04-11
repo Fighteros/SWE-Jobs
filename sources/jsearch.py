@@ -2,6 +2,7 @@
 
 import logging
 import time
+from datetime import datetime, timezone
 from core.models import Job
 from sources.http_utils import get_json
 from core.config import RAPIDAPI_KEY
@@ -78,6 +79,8 @@ def fetch_jsearch() -> list[Job]:
             if item.get("job_country"):
                 location = f"{location}, {item['job_country']}" if location else item["job_country"]
 
+            posted_at = _parse_date(item.get("job_posted_at_datetime_utc"))
+
             jobs.append(Job(
                 title=item.get("job_title", ""),
                 company=item.get("employer_name", ""),
@@ -91,9 +94,23 @@ def fetch_jsearch() -> list[Job]:
                 tags=[],
                 is_remote=item.get("job_is_remote", False),
                 original_source=original_source,
+                posted_at=posted_at,
             ))
     log.debug(f"JSearch: fetched {len(jobs)} jobs.")
     return jobs
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse an ISO date string into a timezone-aware datetime."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None
 
 
 def _resolve_publisher(publisher: str) -> str:

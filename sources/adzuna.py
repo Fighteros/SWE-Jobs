@@ -1,6 +1,7 @@
 """Adzuna — job aggregator API (free tier, needs app_id + app_key)."""
 
 import logging
+from datetime import datetime, timezone
 from core.models import Job
 from sources.http_utils import get_json
 from core.config import ADZUNA_APP_ID, ADZUNA_APP_KEY
@@ -53,6 +54,8 @@ def fetch_adzuna() -> list[Job]:
             if item.get("salary_min") and item.get("salary_max"):
                 salary = f"£{item['salary_min']:,.0f}–£{item['salary_max']:,.0f}"
 
+            posted_at = _parse_date(item.get("created"))
+
             jobs.append(Job(
                 title=item.get("title", ""),
                 company=item.get("company", {}).get("display_name", ""),
@@ -64,6 +67,20 @@ def fetch_adzuna() -> list[Job]:
                 tags=[item.get("category", {}).get("label", "")],
                 is_remote="remote" in item.get("title", "").lower() or
                           "remote" in item.get("description", "").lower()[:200],
+                posted_at=posted_at,
             ))
     log.debug(f"Adzuna: fetched {len(jobs)} jobs.")
     return jobs
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse an ISO date string into a timezone-aware datetime."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None

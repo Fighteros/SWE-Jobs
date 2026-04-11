@@ -1,6 +1,7 @@
 """SmartRecruiters Job Feed — fetches from curated tech company boards."""
 
 import logging
+from datetime import datetime, timezone
 from core.models import Job
 from sources.http_utils import get_json
 
@@ -54,6 +55,8 @@ def fetch_smartrecruiters() -> list[Job]:
             if not is_remote:
                 is_remote = "remote" in location.lower()
 
+            posted_at = _parse_date(item.get("releasedDate"))
+
             jobs.append(Job(
                 title=title,
                 company=company,
@@ -64,6 +67,20 @@ def fetch_smartrecruiters() -> list[Job]:
                 job_type=item.get("typeOfEmployment", {}).get("label", ""),
                 tags=tags,
                 is_remote=is_remote,
+                posted_at=posted_at,
             ))
     log.debug(f"SmartRecruiters: fetched {len(jobs)} jobs across {len(COMPANIES)} companies.")
     return jobs
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse an ISO date string into a timezone-aware datetime."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None

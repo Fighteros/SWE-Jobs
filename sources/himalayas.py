@@ -1,6 +1,7 @@
 """Himalayas — free remote jobs API (no key required)."""
 
 import logging
+from datetime import datetime, timezone
 from core.models import Job
 from sources.http_utils import get_json
 
@@ -25,6 +26,7 @@ def fetch_himalayas() -> list[Job]:
         for item in data["jobs"]:
             location = item.get("location", "")
             remote = item.get("timezoneRestriction") is not None or "remote" in location.lower()
+            posted_at = _parse_date(item.get("pubDate") or item.get("publishedDate"))
             jobs.append(Job(
                 title=item.get("title", ""),
                 company=item.get("companyName", ""),
@@ -35,9 +37,23 @@ def fetch_himalayas() -> list[Job]:
                 job_type=item.get("employmentType", ""),
                 tags=item.get("categories", []) or [],
                 is_remote=remote,
+                posted_at=posted_at,
             ))
     log.debug(f"Himalayas: fetched {len(jobs)} jobs.")
     return jobs
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse an ISO date string into a timezone-aware datetime."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None
 
 
 def _format_salary(item: dict) -> str:

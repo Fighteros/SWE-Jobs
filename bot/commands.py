@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from core import db
+from core.config import ADMIN_TELEGRAM_ID
 from core.models import Job
 from bot.sender import format_job_message
 from bot.keyboards import (
@@ -28,6 +29,7 @@ HELP_TEXT = """
 /applied — View your application history
 /streak — Your daily application streak
 /blacklist — Manage blocked companies/keywords
+/contact — Send a message to the bot owner
 /stats — Bot statistics
 /top — Top jobs this week
 /salary — Salary insights
@@ -477,3 +479,131 @@ async def cmd_blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text(f"✅ Removed {category} '{_escape_html(value)}' from blacklist.", parse_mode="HTML")
         else:
             await update.message.reply_text(f"'{_escape_html(value)}' not found in blacklist.", parse_mode="HTML")
+
+
+# ── Contact / Support ─────────────────────────────────────────
+
+CONTACT_CATEGORIES = ("general", "bug", "feature")
+
+
+async def cmd_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a support message to the bot owner.
+
+    Usage:
+        /contact <message>
+        /contact bug <message>
+        /contact feature <message>
+    """
+    user = update.effective_user
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    args = context.args or []
+
+    if not args:
+        await update.message.reply_text(
+            "<b>Contact the bot owner</b>\n\n"
+            "<b>Usage:</b>\n"
+            "/contact Your message here\n"
+            "/contact bug Something is broken\n"
+            "/contact feature I'd like to see ...\n\n"
+            "Categories: general (default), bug, feature",
+            parse_mode="HTML",
+        )
+        return
+
+    # Check if first word is a category
+    category = "general"
+    message_parts = args
+    if args[0].lower() in CONTACT_CATEGORIES:
+        category = args[0].lower()
+        message_parts = args[1:]
+
+    if not message_parts:
+        await update.message.reply_text("Please include a message after the category.")
+        return
+
+    message_text = " ".join(message_parts)
+
+    if len(message_text) > 2000:
+        await update.message.reply_text("Message too long. Please keep it under 2000 characters.")
+        return
+
+    db.create_support_message(
+        user_id=db_user["id"],
+        telegram_id=user.id,
+        username=user.username or "",
+        message=message_text,
+        category=category,
+    )
+
+    await update.message.reply_text(
+        f"✅ Message sent! Category: <b>{category}</b>\n\n"
+        "The bot owner will review it. Thanks for your feedback!",
+        parse_mode="HTML",
+    )
+
+    # Notify admin in real-time if configured
+    if ADMIN_TELEGRAM_ID:
+        try:
+            admin_id = int(ADMIN_TELEGRAM_ID)
+            sender = f"@{user.username}" if user.username else f"User #{user.id}"
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=(
+                    f"📩 <b>New support message</b>\n\n"
+                    f"From: {_escape_html(sender)}\n"
+                    f"Category: {category}\n"
+                    f"Message: {_escape_html(message_text[:500])}"
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            log.warning(f"Failed to notify admin of support message: {e}")
+
+
+async def cmd_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin-only: list unread support messages.
+
+    Usage:
+        /messages           — list unread messages
+        /messages readall   — mark all as read
+    """
+    user = update.effective_user
+    if not ADMIN_TELEGRAM_ID or str(user.id) != ADMIN_TELEGRAM_ID:
+        await update.message.reply_text("This command is only available to the bot admin.")
+        return
+
+    args = context.args or []
+
+    if args and args[0].lower() == "readall":
+        count = db.mark_all_support_messages_read()
+        await update.message.reply_text(f"✅ Marked {count} message(s) as read.")
+        return
+
+    unread_count = db.count_unread_support_messages()
+    if unread_count == 0:
+        await update.message.reply_text("No unread messages.")
+        return
+
+    messages = db.get_unread_support_messages(limit=10)
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    await update.message.reply_text(
+        f"📬 <b>Unread Messages</b> ({unread_count} total)\n",
+        parse_mode="HTML",
+    )
+
+    for msg in messages:
+        sender = f"@{msg['username']}" if msg['username'] else f"User #{msg['telegram_id']}"
+        created = msg["created_at"].strftime("%b %d, %H:%M")
+        text = (
+            f"<b>#{msg['id']}</b> [{msg['category']}] — {created}\n"
+            f"From: {_escape_html(sender)}\n\n"
+            f"{_escape_html(msg['message'][:500])}"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Mark Read", callback_data=f"msg_read:{msg['id']}")]
+        ])
+        await update.message.reply_text(
+            text, parse_mode="HTML", reply_markup=keyboard,
+        )

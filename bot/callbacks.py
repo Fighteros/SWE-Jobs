@@ -8,6 +8,7 @@ from telegram import Update, Bot
 from telegram.ext import ContextTypes
 
 from core import db
+from core.config import ADMIN_TELEGRAM_ID
 from core.models import Job
 from bot.sender import format_job_message
 from bot.keyboards import job_buttons
@@ -54,6 +55,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_sub_source_done(query, user, context)
     elif data.startswith("saved_page:"):
         await _handle_saved_page(query, user, data)
+    elif data.startswith("msg_read:"):
+        await _handle_msg_read(query, user, data)
     else:
         log.warning(f"Unknown callback data: {data}")
 
@@ -319,3 +322,19 @@ async def _handle_saved_page(query, user, data: str) -> None:
     # Delegate to the saved command with page param
     from bot.commands import _show_saved_page
     await _show_saved_page(query, user, page)
+
+
+async def _handle_msg_read(query, user, data: str) -> None:
+    """Mark a support message as read (admin only)."""
+    if not ADMIN_TELEGRAM_ID or str(user.id) != ADMIN_TELEGRAM_ID:
+        await query.answer("Admin only", show_alert=True)
+        return
+
+    message_id = int(data.split(":")[1])
+    db.mark_support_message_read(message_id)
+
+    await query.edit_message_text(
+        query.message.text_html + "\n\n<i>✅ Marked as read</i>",
+        parse_mode="HTML",
+    )
+    await query.answer("Marked as read")

@@ -91,7 +91,8 @@ async def main():
     inserted_jobs = []
     for row in inserted_rows:
         job = uid_to_job[row["unique_id"]]
-        job.created_at = now  # just inserted
+        if not job.created_at:
+            job.created_at = now  # fallback for posted_display when posted_at is None
         inserted_jobs.append((job, row["id"]))
     log.info(f"Inserted: {len(inserted_jobs)} jobs")
 

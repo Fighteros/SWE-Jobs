@@ -68,8 +68,9 @@ class Job:
     # Telegram delivery tracking: {channel_key: message_id}
     telegram_message_ids: dict = field(default_factory=dict)
 
-    # Timestamp from DB (populated by from_db_row)
-    created_at: Optional[datetime] = None
+    # Timestamps
+    posted_at: Optional[datetime] = None   # when the job was posted on the source
+    created_at: Optional[datetime] = None  # when we inserted it into DB
 
     def __post_init__(self):
         # Ensure tags is never None
@@ -130,11 +131,11 @@ class Job:
     @property
     def posted_display(self) -> str:
         """Format 'posted X ago (date)' for display."""
-        if not self.created_at:
+        # Prefer posted_at (actual source date) over created_at (DB insert time)
+        dt = self.posted_at or self.created_at
+        if not dt:
             return ""
         now = datetime.now(timezone.utc)
-        # Ensure created_at is timezone-aware
-        dt = self.created_at
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         diff = now - dt
@@ -197,6 +198,7 @@ class Job:
             "topics": self.topics,
             "original_source": self.original_source,
             "telegram_message_ids": Json(self.telegram_message_ids),
+            "posted_at": self.posted_at,
         }
 
     @classmethod
@@ -229,5 +231,6 @@ class Job:
             topics=row.get("topics") or [],
             original_source=row.get("original_source", ""),
             telegram_message_ids=telegram_ids,
+            posted_at=row.get("posted_at"),
             created_at=row.get("created_at"),
         )

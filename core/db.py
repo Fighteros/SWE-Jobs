@@ -160,6 +160,7 @@ _JOBS_UPDATABLE_COLUMNS = {
     "tags",
     "topics",
     "sent_at",
+    "posted_at",
     "telegram_message_ids",
 }
 
@@ -684,3 +685,69 @@ def update_blacklist(user_id: int, blacklist: dict) -> None:
         "UPDATE users SET blacklist = %s WHERE id = %s",
         (json.dumps(blacklist), user_id),
     )
+
+
+# =============================================================================
+# Support Messages
+# =============================================================================
+
+def create_support_message(
+    user_id: int,
+    telegram_id: int,
+    username: str,
+    message: str,
+    category: str = "general",
+) -> dict:
+    """Save a support/contact message from a user."""
+    return _execute(
+        """
+        INSERT INTO support_messages (user_id, telegram_id, username, message, category)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING *
+        """,
+        (user_id, telegram_id, username, message, category),
+    )
+
+
+def get_unread_support_messages(limit: int = 20, offset: int = 0) -> list:
+    """Return unread support messages, newest first."""
+    return _fetchall(
+        """
+        SELECT * FROM support_messages
+        WHERE is_read = FALSE
+        ORDER BY created_at DESC
+        LIMIT %s OFFSET %s
+        """,
+        (limit, offset),
+    )
+
+
+def count_unread_support_messages() -> int:
+    """Return count of unread support messages."""
+    row = _fetchone(
+        "SELECT COUNT(*) as count FROM support_messages WHERE is_read = FALSE"
+    )
+    return row["count"] if row else 0
+
+
+def mark_support_message_read(message_id: int) -> None:
+    """Mark a support message as read (archived)."""
+    _execute(
+        "UPDATE support_messages SET is_read = TRUE WHERE id = %s",
+        (message_id,),
+    )
+
+
+def mark_all_support_messages_read() -> int:
+    """Mark all unread support messages as read. Returns count affected."""
+    row = _fetchone(
+        """
+        WITH updated AS (
+            UPDATE support_messages SET is_read = TRUE
+            WHERE is_read = FALSE
+            RETURNING id
+        )
+        SELECT COUNT(*) as count FROM updated
+        """
+    )
+    return row["count"] if row else 0

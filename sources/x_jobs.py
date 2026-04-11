@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 from core.models import Job
 from sources.playwright_utils import get_browser_page
 
@@ -172,8 +173,12 @@ def _parse_tweet(tweet) -> Job | None:
     if not title:
         return None
 
-    # Get tweet permalink
+    # Get tweet permalink and posted time
     time_el = tweet.query_selector("time")
+    posted_at = None
+    if time_el:
+        dt_attr = time_el.get_attribute("datetime")
+        posted_at = _parse_date(dt_attr)
     link_el = time_el.evaluate_handle(
         "el => el.closest('a')"
     ) if time_el else None
@@ -229,6 +234,7 @@ def _parse_tweet(tweet) -> Job | None:
         original_source="X (Twitter)",
         salary_raw=salary_raw,
         is_remote=is_remote,
+        posted_at=posted_at,
     )
 
 
@@ -282,6 +288,19 @@ def _extract_apply_link(tweet, text: str) -> str:
             if displayed and not displayed.startswith("x.com") and not displayed.startswith("twitter.com"):
                 return href
     return ""
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse an ISO date string into a timezone-aware datetime."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None
 
 
 def _extract_salary(text: str) -> str:

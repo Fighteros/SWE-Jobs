@@ -5,6 +5,7 @@ Scrapes software/tech job listings across multiple search queries.
 
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from core.models import Job
 from sources.playwright_utils import get_browser_page
 
@@ -104,6 +105,12 @@ def _parse_card(card) -> Job | None:
 
     is_remote = "remote" in location.lower() or any("remote" in t.lower() for t in tags)
 
+    # Posted date (Wuzzuf shows "X days ago" or similar)
+    posted_at = None
+    date_el = card.query_selector("div.css-4c4ojb, div.css-do6t5g, span.css-182mrdn")
+    if date_el:
+        posted_at = _parse_relative_date(date_el.inner_text().strip())
+
     # Detect job type from tags
     job_type = ""
     type_keywords = {"full time": "Full-time", "part time": "Part-time",
@@ -126,4 +133,29 @@ def _parse_card(card) -> Job | None:
         is_remote=is_remote,
         country="Egypt",
         tags=tags,
+        posted_at=posted_at,
     )
+
+
+def _parse_relative_date(text: str) -> datetime | None:
+    """Parse Wuzzuf relative dates like '2 days ago', '1 month ago' into datetime."""
+    if not text:
+        return None
+    text = text.lower().strip()
+    now = datetime.now(timezone.utc)
+    match = re.search(r'(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago', text)
+    if not match:
+        return None
+    num = int(match.group(1))
+    unit = match.group(2)
+    deltas = {
+        "second": timedelta(seconds=num),
+        "minute": timedelta(minutes=num),
+        "hour": timedelta(hours=num),
+        "day": timedelta(days=num),
+        "week": timedelta(weeks=num),
+        "month": timedelta(days=num * 30),
+        "year": timedelta(days=num * 365),
+    }
+    delta = deltas.get(unit)
+    return (now - delta) if delta else None

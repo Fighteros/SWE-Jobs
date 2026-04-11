@@ -7,6 +7,7 @@ Searches for Egypt, Saudi Arabia, and remote jobs.
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from core.models import Job
 from sources.http_utils import get_text
 
@@ -130,6 +131,10 @@ def _parse_search_html(html: str, search_params: dict) -> list[Job]:
             if not title or not url:
                 continue
 
+            # Extract posted date from <time datetime="...">
+            time_match = re.search(r'<time[^>]*datetime="([^"]+)"', card)
+            posted_at = _parse_date(time_match.group(1)) if time_match else None
+
             # Determine if remote from search params or location
             is_remote = search_params.get("f_WT") == "2" or "remote" in location.lower()
 
@@ -140,12 +145,26 @@ def _parse_search_html(html: str, search_params: dict) -> list[Job]:
                 url=url,
                 source="linkedin",
                 is_remote=is_remote,
+                posted_at=posted_at,
             ))
         except Exception as e:
             log.debug(f"LinkedIn: error parsing card: {e}")
             continue
 
     return jobs
+
+
+def _parse_date(date_str: str | None) -> datetime | None:
+    """Parse an ISO date string into a timezone-aware datetime."""
+    if not date_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, AttributeError):
+        return None
 
 
 def _clean(text: str) -> str:

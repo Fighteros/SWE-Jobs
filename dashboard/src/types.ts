@@ -16,6 +16,7 @@ export interface Job {
   country: string;
   tags: string[];
   topics: string[];
+  posted_at: string | null;
   created_at: string;
 }
 
