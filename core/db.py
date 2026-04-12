@@ -532,10 +532,9 @@ def save_job_for_user(user_id: int, job_id: int) -> bool:
 def get_saved_jobs(user_id: int, limit: int = 20, offset: int = 0):
     """
     Return saved jobs for a user, joined with the jobs table for full details.
+    Returns raw dicts so callers can access row['id'] for buttons.
     """
-    from core.models import Job
-
-    rows = _fetchall(
+    return _fetchall(
         """
         SELECT j.*
         FROM user_saved_jobs usj
@@ -546,7 +545,6 @@ def get_saved_jobs(user_id: int, limit: int = 20, offset: int = 0):
         """,
         (user_id, limit, offset),
     )
-    return [Job.from_db_row(r) for r in rows]
 
 
 # =============================================================================

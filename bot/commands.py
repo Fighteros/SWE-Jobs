@@ -183,31 +183,34 @@ async def _show_saved_page(update_or_query, user, page: int) -> None:
     has_more = len(saved) > per_page
     saved = saved[:per_page]
 
+    # Determine how to send messages
+    if hasattr(update_or_query, "message") and update_or_query.message:
+        reply_fn = update_or_query.message.reply_text
+    else:
+        reply_fn = update_or_query.message.reply_text  # CallbackQuery.message
+
     if not saved:
         text = "No saved jobs yet. Tap 💾 Save on any job post!"
-        if hasattr(update_or_query, "message") and update_or_query.message:
-            await update_or_query.message.reply_text(text)
-        else:
-            await update_or_query.edit_message_text(text)
+        await reply_fn(text)
         return
 
-    total_pages = page + (1 if has_more else 0)  # Approximate
+    total_pages = page + (1 if has_more else 0)
     header = f"💾 <b>Saved Jobs</b> (page {page}):\n"
+    await reply_fn(header, parse_mode="HTML")
 
-    if hasattr(update_or_query, "message") and update_or_query.message:
-        send_fn = update_or_query.message.reply_text
-    else:
-        send_fn = update_or_query.edit_message_text
-
-    await send_fn(header, parse_mode="HTML")
     for row in saved:
         job = Job.from_db_row(row)
         msg = format_job_message(job)
-        if hasattr(update_or_query, "message") and update_or_query.message:
-            await update_or_query.message.reply_text(
-                msg, parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
+        await reply_fn(
+            msg, parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=job_buttons(row["id"]),
+        )
+
+    # Pagination buttons
+    nav = pagination_keyboard(page, total_pages, "saved_page")
+    if nav:
+        await reply_fn("Page navigation:", reply_markup=nav)
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
