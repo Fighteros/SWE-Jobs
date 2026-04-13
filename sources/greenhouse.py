@@ -13,8 +13,8 @@ BOARDS = [
     "cloudflare", "airbnb", "stripe",
     "twilio", "datadog", "gitlab", "discord",
     "coinbase", "brex", "airtable", "vercel",
-    "gusto", "duolingo", "canva", "hubspot",
-    "doordash", "instacart", "coupang", "reddit",
+    "gusto", "duolingo", "hubspot",
+    "instacart", "coupang", "reddit",
 ]
 
 
