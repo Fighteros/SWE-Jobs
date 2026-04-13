@@ -8,8 +8,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from core import db
-from core.config import ADMIN_TELEGRAM_ID
+from core.config import ADMIN_TELEGRAM_ID, TELEGRAM_GROUP_ID
 from core.models import Job
+from core.channels import get_topic_thread_id
 from bot.sender import format_job_message
 from bot.keyboards import (
     topic_selection_keyboard, job_buttons, pagination_keyboard,
@@ -610,3 +611,64 @@ async def cmd_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(
             text, parse_mode="HTML", reply_markup=keyboard,
         )
+
+
+async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin-only: broadcast a message to #general topic.
+
+    Usage:
+        /broadcast <message>          — send plain text
+        /broadcast html <message>     — send with HTML formatting
+        /broadcast topic:<key> <msg>  — send to a specific topic (e.g. topic:backend)
+    """
+    user = update.effective_user
+    if not ADMIN_TELEGRAM_ID or str(user.id) != ADMIN_TELEGRAM_ID:
+        await update.message.reply_text("This command is only available to the bot admin.")
+        return
+
+    args = context.args or []
+    if not args:
+        await update.message.reply_text(
+            "Usage:\n"
+            "/broadcast <message>\n"
+            "/broadcast html <b>formatted</b> message\n"
+            "/broadcast topic:backend Your message here"
+        )
+        return
+
+    # Parse options
+    topic_key = "general"
+    use_html = False
+    text_args = list(args)
+
+    # Check for topic: prefix
+    if text_args[0].startswith("topic:"):
+        topic_key = text_args.pop(0).split(":", 1)[1]
+
+    # Check for html flag
+    if text_args and text_args[0].lower() == "html":
+        use_html = True
+        text_args.pop(0)
+
+    message = " ".join(text_args)
+    if not message:
+        await update.message.reply_text("Message cannot be empty.")
+        return
+
+    thread_id = get_topic_thread_id(topic_key)
+    if thread_id is None:
+        await update.message.reply_text(f"Topic '{topic_key}' not configured (env var not set).")
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=TELEGRAM_GROUP_ID,
+            message_thread_id=thread_id,
+            text=message,
+            parse_mode="HTML" if use_html else None,
+            disable_web_page_preview=True,
+        )
+        await update.message.reply_text(f"✅ Broadcast sent to #{topic_key}!")
+    except Exception as e:
+        log.error(f"Broadcast failed: {e}")
+        await update.message.reply_text(f"❌ Failed to send: {e}")

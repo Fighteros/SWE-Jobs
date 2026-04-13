@@ -32,7 +32,7 @@ def _register_handlers(app: Application) -> None:
         cmd_start, cmd_help, cmd_subscribe, cmd_unsubscribe,
         cmd_mysubs, cmd_search, cmd_saved, cmd_stats, cmd_top,
         cmd_salary, cmd_applied, cmd_streak, cmd_blacklist,
-        cmd_contact, cmd_messages,
+        cmd_contact, cmd_messages, cmd_broadcast,
     )
     from bot.callbacks import handle_callback
 
@@ -52,6 +52,7 @@ def _register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("blacklist", cmd_blacklist))
     app.add_handler(CommandHandler("contact", cmd_contact))
     app.add_handler(CommandHandler("messages", cmd_messages))
+    app.add_handler(CommandHandler("broadcast", cmd_broadcast))
 
     # Callback queries (inline button presses)
     app.add_handler(CallbackQueryHandler(handle_callback))
