@@ -109,7 +109,14 @@ def _set_auth_token(page, token: str):
             "httpOnly": True,
             "sameSite": "None",
         }])
-        log.info("X: set auth_token cookie.")
+        # Reload to apply the cookie so X recognises the session
+        page.reload(wait_until="domcontentloaded")
+        time.sleep(2)
+        current_url = page.url
+        if "/login" in current_url or "/i/flow/login" in current_url:
+            log.warning("X: auth_token cookie set but still redirected to login — token may be expired.")
+        else:
+            log.info("X: auth_token cookie set and session active.")
     except Exception as e:
         log.warning(f"X: failed to set auth_token: {e}")
 
@@ -118,13 +125,26 @@ def _scrape_search(page, query: str) -> list[Job]:
     """Run a single search query and extract job-like tweets."""
     jobs = []
     params = f"?q={query}&src=typed_query&f=live"
-    page.goto(f"{SEARCH_BASE}{params}", wait_until="domcontentloaded")
+    url = f"{SEARCH_BASE}{params}"
+    page.goto(url, wait_until="domcontentloaded")
 
-    # Wait for tweets to load
+    # Give the SPA time to hydrate after domcontentloaded
+    time.sleep(3)
+
+    # Check if we got redirected to login
+    current_url = page.url
+    if "/login" in current_url or "/i/flow/login" in current_url:
+        log.warning(f"X: redirected to login — auth_token may be expired. URL: {current_url}")
+        return jobs
+
+    # Wait for tweets to load — try multiple selectors
+    tweet_selector = 'article[data-testid="tweet"], article[role="article"]'
     try:
-        page.wait_for_selector('article[data-testid="tweet"]', timeout=15_000)
+        page.wait_for_selector(tweet_selector, timeout=15_000)
     except Exception:
-        log.debug(f"X: no tweets found for '{query}'")
+        # Log page title to diagnose what X is showing
+        title = page.title()
+        log.warning(f"X: no tweets for '{query}' — page title: '{title}', url: {page.url}")
         return jobs
 
     # Scroll to load more tweets
@@ -133,7 +153,8 @@ def _scrape_search(page, query: str) -> list[Job]:
         time.sleep(SCROLL_PAUSE)
 
     # Extract all tweet articles
-    tweets = page.query_selector_all('article[data-testid="tweet"]')
+    tweets = page.query_selector_all(tweet_selector)
+    log.debug(f"X: found {len(tweets)} tweets for '{query}'")
 
     for tweet in tweets:
         try:
