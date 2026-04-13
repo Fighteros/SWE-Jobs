@@ -29,9 +29,10 @@ from sources.wuzzuf import fetch_wuzzuf
 from sources.x_jobs import fetch_x_jobs
 from sources.glassdoor import fetch_glassdoor
 from sources.indeed import fetch_indeed
-from sources.bayt import fetch_bayt
-from sources.naukrigulf import fetch_naukrigulf
-from sources.gulftalent import fetch_gulftalent
+# TODO: Bayt, NaukriGulf, GulfTalent disabled — Playwright scrapers need fixing
+# from sources.bayt import fetch_bayt
+# from sources.naukrigulf import fetch_naukrigulf
+# from sources.gulftalent import fetch_gulftalent
 from sources.dubizzle import fetch_dubizzle
 
 # (display_name, source_key, fetch_function)
@@ -63,8 +64,8 @@ ALL_FETCHERS = [
     ("X (Twitter)",      "x",                fetch_x_jobs),
     ("Glassdoor",        "glassdoor",        fetch_glassdoor),
     ("Indeed",           "indeed",           fetch_indeed),
-    ("Bayt",             "bayt",             fetch_bayt),
-    ("NaukriGulf",       "naukrigulf",       fetch_naukrigulf),
-    ("GulfTalent",       "gulftalent",       fetch_gulftalent),
+    # ("Bayt",             "bayt",             fetch_bayt),
+    # ("NaukriGulf",       "naukrigulf",       fetch_naukrigulf),
+    # ("GulfTalent",       "gulftalent",       fetch_gulftalent),
     ("Dubizzle",         "dubizzle",         fetch_dubizzle),
 ]
