@@ -26,14 +26,15 @@ from sources.recruitee import fetch_recruitee
 from sources.ashby import fetch_ashby
 from sources.smartrecruiters import fetch_smartrecruiters
 from sources.wuzzuf import fetch_wuzzuf
-from sources.x_jobs import fetch_x_jobs
 from sources.glassdoor import fetch_glassdoor
-from sources.indeed import fetch_indeed
-# TODO: Bayt, NaukriGulf, GulfTalent disabled — Playwright scrapers need fixing
+# TODO: Playwright scrapers disabled — need fixing
+# from sources.x_jobs import fetch_x_jobs
+# from sources.indeed import fetch_indeed
 # from sources.bayt import fetch_bayt
 # from sources.naukrigulf import fetch_naukrigulf
 # from sources.gulftalent import fetch_gulftalent
-from sources.dubizzle import fetch_dubizzle
+# TODO: Dubizzle disabled — HTML scraper broken (site blocks/changed structure)
+# from sources.dubizzle import fetch_dubizzle
 
 # (display_name, source_key, fetch_function)
 ALL_FETCHERS = [
@@ -61,11 +62,11 @@ ALL_FETCHERS = [
     ("Ashby",            "ashby",            fetch_ashby),
     ("SmartRecruiters",  "smartrecruiters",  fetch_smartrecruiters),
     ("Wuzzuf",           "wuzzuf",           fetch_wuzzuf),
-    ("X (Twitter)",      "x",                fetch_x_jobs),
     ("Glassdoor",        "glassdoor",        fetch_glassdoor),
-    ("Indeed",           "indeed",           fetch_indeed),
+    # ("X (Twitter)",      "x",                fetch_x_jobs),
+    # ("Indeed",           "indeed",           fetch_indeed),
     # ("Bayt",             "bayt",             fetch_bayt),
     # ("NaukriGulf",       "naukrigulf",       fetch_naukrigulf),
     # ("GulfTalent",       "gulftalent",       fetch_gulftalent),
-    ("Dubizzle",         "dubizzle",         fetch_dubizzle),
+    # ("Dubizzle",         "dubizzle",         fetch_dubizzle),
 ]

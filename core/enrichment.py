@@ -21,11 +21,15 @@ def _match_keywords(text: str, keywords: list[str]) -> bool:
 
 
 def _is_egypt_location(location: str) -> bool:
+    if not location:
+        return False
     loc = location.lower()
     return any(p in loc for p in EGYPT_PATTERNS)
 
 
 def _is_saudi_location(location: str) -> bool:
+    if not location:
+        return False
     loc = location.lower()
     return any(p in loc for p in SAUDI_PATTERNS)
 

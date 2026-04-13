@@ -19,21 +19,11 @@ REQUEST_DELAY = 5.0
 _BASE_REMOTE = {"remote_jobs_only": "true", "num_pages": "1"}
 _BASE_LOCAL = {"num_pages": "1"}
 
-# Consolidated queries — broader terms cover more roles per request.
+# Keep queries minimal to stay within free RapidAPI tier limits.
 SEARCHES = [
-    # Remote worldwide (broad terms that cover sub-specialties)
     {"query": "software engineer remote", **_BASE_REMOTE},
-    {"query": "backend developer remote", **_BASE_REMOTE},
-    {"query": "frontend developer remote", **_BASE_REMOTE},
-    {"query": "mobile developer remote", **_BASE_REMOTE},
-    {"query": "devops engineer remote", **_BASE_REMOTE},
-    {"query": "data scientist machine learning remote", **_BASE_REMOTE},
-    # Egypt onsite
     {"query": "software developer in Egypt", **_BASE_LOCAL},
-    {"query": "mobile developer in Egypt", **_BASE_LOCAL},
-    # Saudi Arabia onsite
     {"query": "software developer in Saudi Arabia", **_BASE_LOCAL},
-    {"query": "backend developer in Saudi Arabia", **_BASE_LOCAL},
 ]
 
 # Map publisher names for display
