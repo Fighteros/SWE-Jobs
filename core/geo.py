@@ -4,7 +4,15 @@ Geo-filtering rules: allowed countries, location patterns, and remote detection.
 
 # ─── Geo-filtering ──────────────────────────────────────────
 # Jobs in these countries pass regardless of remote/onsite
-ALLOWED_ONSITE_COUNTRIES = {"egypt", "مصر", "saudi arabia", "saudi", "ksa", "السعودية"}
+ALLOWED_ONSITE_COUNTRIES = {
+    "egypt", "مصر",
+    "saudi arabia", "saudi", "ksa", "السعودية",
+    "uae", "united arab emirates", "الإمارات",
+    "qatar", "قطر",
+    "bahrain", "البحرين",
+    "kuwait", "الكويت",
+    "oman", "عمان",
+}
 
 # Patterns that indicate a location is in Egypt
 EGYPT_PATTERNS = {
@@ -30,6 +38,24 @@ SAUDI_PATTERNS = {
     "taif", "الطائف", "jubail", "الجبيل", "yanbu", "ينبع",
     "neom", "نيوم", "qassim", "القصيم", "hail", "حائل",
     "jazan", "جازان", "najran", "نجران", "al kharj", "الخرج",
+}
+
+# Patterns that indicate a location is in UAE
+UAE_PATTERNS = {
+    "uae", "united arab emirates", "الإمارات", "الإمارات العربية المتحدة",
+    "dubai", "دبي", "abu dhabi", "أبوظبي", "sharjah", "الشارقة",
+    "ajman", "عجمان", "ras al khaimah", "رأس الخيمة",
+    "fujairah", "الفجيرة", "umm al quwain", "أم القيوين",
+    "jebel ali", "dubai internet city", "dubai media city",
+    "dubai silicon oasis", "masdar city", "saadiyat island",
+}
+
+# Patterns that indicate a location is in other Gulf countries
+GULF_PATTERNS = {
+    "qatar", "قطر", "doha", "الدوحة",
+    "bahrain", "البحرين", "manama", "المنامة",
+    "kuwait", "الكويت", "kuwait city", "مدينة الكويت",
+    "oman", "عمان", "muscat", "مسقط", "salalah", "صلالة",
 }
 
 # Patterns that indicate a job is remote

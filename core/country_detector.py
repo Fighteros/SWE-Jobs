@@ -4,7 +4,7 @@ Pattern-based, no external geocoding API needed.
 """
 
 from typing import Optional
-from core.geo import EGYPT_PATTERNS, SAUDI_PATTERNS
+from core.geo import EGYPT_PATTERNS, SAUDI_PATTERNS, UAE_PATTERNS, GULF_PATTERNS
 
 # Country pattern map: {ISO code: set of patterns}
 _COUNTRY_PATTERNS: dict[str, set[str]] = {
@@ -44,10 +44,11 @@ _COUNTRY_PATTERNS: dict[str, set[str]] = {
         "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad",
         "pune", "chennai", "kolkata", "noida", "gurgaon", "gurugram",
     },
-    "AE": {
-        "uae", "united arab emirates",
-        "dubai", "abu dhabi", "sharjah",
-    },
+    "AE": UAE_PATTERNS,
+    "QA": {p for p in GULF_PATTERNS if any(k in p for k in ("qatar", "قطر", "doha", "الدوحة"))},
+    "BH": {p for p in GULF_PATTERNS if any(k in p for k in ("bahrain", "البحرين", "manama", "المنامة"))},
+    "KW": {p for p in GULF_PATTERNS if any(k in p for k in ("kuwait", "الكويت"))},
+    "OM": {p for p in GULF_PATTERNS if any(k in p for k in ("oman", "عمان", "muscat", "مسقط", "salalah", "صلالة"))},
     "AU": {
         "australia",
         "sydney", "melbourne", "brisbane", "perth",

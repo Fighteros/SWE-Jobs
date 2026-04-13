@@ -131,8 +131,9 @@ class Job:
     @property
     def posted_display(self) -> str:
         """Format 'posted X ago (date)' for display."""
-        # Prefer posted_at (actual source date) over created_at (DB insert time)
-        dt = self.posted_at or self.created_at
+        # Only use posted_at (actual source date); created_at is DB insert time
+        # and would show misleading "posted X ago" values.
+        dt = self.posted_at
         if not dt:
             return ""
         now = datetime.now(timezone.utc)

@@ -10,7 +10,7 @@ from telegram.error import TelegramError, RetryAfter, TimedOut, NetworkError
 
 from core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_ID, TELEGRAM_SEND_DELAY
 from core.models import Job
-from core.channels import CHANNELS, get_topic_thread_id
+from core.channels import CHANNELS, get_topic_thread_id, SOURCE_ICON
 from core import db
 from bot.keyboards import job_buttons
 
@@ -64,7 +64,8 @@ def format_job_message(job: Job) -> str:
 
     lines.append("")
     lines.append(f'🔗 <a href="{job.url}">Apply Now</a>')
-    lines.append(f"📡 Source: {source}")
+    source_icon = SOURCE_ICON.get(job.source, "📡")
+    lines.append(f"{source_icon} Source: {source}")
 
     return "\n".join(lines)
 

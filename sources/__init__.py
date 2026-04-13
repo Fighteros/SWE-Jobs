@@ -11,6 +11,7 @@ from sources.wwr import fetch_wwr
 from sources.workingnomads import fetch_workingnomads
 from sources.jsearch import fetch_jsearch
 from sources.linkedin import fetch_linkedin
+from sources.linkedin_posts import fetch_linkedin_posts
 from sources.adzuna import fetch_adzuna
 from sources.themuse import fetch_themuse
 from sources.findwork import fetch_findwork
@@ -27,6 +28,12 @@ from sources.ashby import fetch_ashby
 from sources.smartrecruiters import fetch_smartrecruiters
 from sources.wuzzuf import fetch_wuzzuf
 from sources.x_jobs import fetch_x_jobs
+from sources.glassdoor import fetch_glassdoor
+from sources.indeed import fetch_indeed
+from sources.bayt import fetch_bayt
+from sources.naukrigulf import fetch_naukrigulf
+from sources.gulftalent import fetch_gulftalent
+from sources.dubizzle import fetch_dubizzle
 
 # (display_name, source_key, fetch_function)
 ALL_FETCHERS = [
@@ -39,6 +46,7 @@ ALL_FETCHERS = [
     ("Working Nomads",   "workingnomads",    fetch_workingnomads),
     ("JSearch",          "jsearch",          fetch_jsearch),
     ("LinkedIn",         "linkedin",         fetch_linkedin),
+    ("LinkedIn Posts",   "linkedin_posts",   fetch_linkedin_posts),
     ("Adzuna",           "adzuna",           fetch_adzuna),
     ("The Muse",         "themuse",          fetch_themuse),
     ("Findwork",         "findwork",         fetch_findwork),
@@ -55,4 +63,10 @@ ALL_FETCHERS = [
     ("SmartRecruiters",  "smartrecruiters",  fetch_smartrecruiters),
     ("Wuzzuf",           "wuzzuf",           fetch_wuzzuf),
     ("X (Twitter)",      "x",                fetch_x_jobs),
+    ("Glassdoor",        "glassdoor",        fetch_glassdoor),
+    ("Indeed",           "indeed",           fetch_indeed),
+    ("Bayt",             "bayt",             fetch_bayt),
+    ("NaukriGulf",       "naukrigulf",       fetch_naukrigulf),
+    ("GulfTalent",       "gulftalent",       fetch_gulftalent),
+    ("Dubizzle",         "dubizzle",         fetch_dubizzle),
 ]
