@@ -11,8 +11,6 @@ BASE = "https://api.lever.co/v0/postings/{}"
 # Curated tech company slugs (verified active on Lever)
 COMPANIES = [
     "spotify", "palantir",
-    "Netflix", "JUUL", "reddit",
-    "mckinsey", "samsara", "verkada",
 ]
 
 

@@ -40,23 +40,21 @@ def fetch_wuzzuf() -> list[Job]:
                 try:
                     query = params["q"].replace(" ", "+")
                     url = f"{BASE_URL}?q={query}&a={params['a']}"
-                    page.goto(url, wait_until="domcontentloaded")
-                    page.wait_for_selector("div.css-1gatmva", timeout=10_000)
+                    page.goto(url, wait_until="networkidle", timeout=20_000)
 
-                    cards = page.query_selector_all("div.css-1gatmva")
-                    if not cards:
-                        # Fallback: try alternate card selector
-                        cards = page.query_selector_all("div.css-pkv5jc")
+                    # Use stable selectors — Wuzzuf wraps each job in an
+                    # <a> that links to /jobs/p/…  Fall back to any h2 > a.
+                    page.wait_for_selector(
+                        "a[href*='/jobs/p/'], h2 a[href*='/jobs/']",
+                        timeout=10_000,
+                    )
 
-                    for card in cards:
-                        try:
-                            job = _parse_card(card)
-                            if job and job.url not in seen_urls:
-                                seen_urls.add(job.url)
-                                jobs.append(job)
-                        except Exception as e:
-                            log.debug(f"Wuzzuf: error parsing card: {e}")
-                            continue
+                    html = page.content()
+                    parsed = _parse_html(html)
+                    for job in parsed:
+                        if job.url not in seen_urls:
+                            seen_urls.add(job.url)
+                            jobs.append(job)
 
                 except Exception as e:
                     log.warning(f"Wuzzuf: error on search '{params['q']}': {e}")
@@ -69,72 +67,53 @@ def fetch_wuzzuf() -> list[Job]:
     return jobs
 
 
-def _parse_card(card) -> Job | None:
-    """Parse a single Wuzzuf job card element into a Job."""
-    # Title & URL
-    title_el = card.query_selector("h2 a, a.css-o171kl")
-    if not title_el:
-        return None
-    title = title_el.inner_text().strip()
-    href = title_el.get_attribute("href") or ""
-    if not title or not href:
-        return None
-    url = href if href.startswith("http") else f"https://wuzzuf.net{href}"
+def _parse_html(html: str) -> list[Job]:
+    """Parse Wuzzuf search results HTML into Job objects."""
+    jobs = []
 
-    # Company
-    company_el = card.query_selector("a.css-17s97q8, div.css-d7j1kk a")
-    company = company_el.inner_text().strip() if company_el else ""
-
-    # Location
-    location_el = card.query_selector("span.css-5wys0k, span.css-db2dqe")
-    location = location_el.inner_text().strip() if location_el else "Egypt"
-
-    # Job type & experience
-    tags = []
-    tag_els = card.query_selector_all("div.css-1lh32fc span, span.css-1ve4b7d")
-    for tag_el in tag_els:
-        tag_text = tag_el.inner_text().strip()
-        if tag_text:
-            tags.append(tag_text)
-
-    # Salary (rarely shown, but sometimes present)
-    salary_raw = ""
-    salary_el = card.query_selector("span.css-4xky9y, div.css-3udp1v")
-    if salary_el:
-        salary_raw = salary_el.inner_text().strip()
-
-    is_remote = "remote" in location.lower() or any("remote" in t.lower() for t in tags)
-
-    # Posted date (Wuzzuf shows "X days ago" or similar)
-    posted_at = None
-    date_el = card.query_selector("div.css-4c4ojb, div.css-do6t5g, span.css-182mrdn")
-    if date_el:
-        posted_at = _parse_relative_date(date_el.inner_text().strip())
-
-    # Detect job type from tags
-    job_type = ""
-    type_keywords = {"full time": "Full-time", "part time": "Part-time",
-                     "freelance": "Freelance", "contract": "Contract",
-                     "internship": "Internship"}
-    for tag in tags:
-        for kw, jt in type_keywords.items():
-            if kw in tag.lower():
-                job_type = jt
-                break
-
-    return Job(
-        title=title,
-        company=company,
-        location=location,
-        url=url,
-        source="wuzzuf",
-        salary_raw=salary_raw,
-        job_type=job_type,
-        is_remote=is_remote,
-        country="Egypt",
-        tags=tags,
-        posted_at=posted_at,
+    # Each job card is wrapped in a div containing an h2 with the job link.
+    # Extract blocks that contain a wuzzuf.net/jobs link.
+    cards = re.findall(
+        r'<div[^>]*>\s*<h2[^>]*>\s*<a[^>]*href="(/jobs/p/[^"]*)"[^>]*>(.*?)</a>.*?</div>(?:\s*</div>){0,4}',
+        html, re.DOTALL,
     )
+
+    if not cards:
+        # Broader fallback: find all job links with surrounding context
+        cards = re.findall(
+            r'<a[^>]*href="(/jobs/p/[^"]*)"[^>]*>(.*?)</a>',
+            html, re.DOTALL,
+        )
+
+    for match in cards:
+        try:
+            href, title_raw = match[0], match[1]
+            title = _clean(title_raw)
+            if not title or not href:
+                continue
+            url = f"https://wuzzuf.net{href}"
+
+            jobs.append(Job(
+                title=title,
+                company="",
+                location="Egypt",
+                url=url,
+                source="wuzzuf",
+                is_remote="remote" in title.lower(),
+                country="Egypt",
+            ))
+        except Exception as e:
+            log.debug(f"Wuzzuf: error parsing card: {e}")
+            continue
+
+    return jobs
+
+
+def _clean(text: str) -> str:
+    """Strip HTML tags and whitespace."""
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def _parse_relative_date(text: str) -> datetime | None:

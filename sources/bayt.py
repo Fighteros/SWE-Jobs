@@ -41,11 +41,11 @@ def fetch_bayt() -> list[Job]:
                 try:
                     keyword_slug = keyword.replace(" ", "-")
                     url = f"{BASE_URL}{keyword_slug}-jobs/"
-                    page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+                    page.goto(url, wait_until="networkidle", timeout=20_000)
 
-                    # Wait for job listing elements
+                    # Wait for any job-related link to appear
                     page.wait_for_selector(
-                        "li.has-pointer-d, div[data-job-id], div.jb-listing",
+                        "a[href*='/en/'][href*='job'], h2 a",
                         timeout=10_000,
                     )
 

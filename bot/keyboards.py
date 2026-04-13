@@ -137,7 +137,6 @@ SOURCE_OPTIONS = [
     ("findwork", "Findwork"),
     ("usajobs", "USAJobs"),
     ("devitjobs", "DevITjobs"),
-    ("stackoverflow", "StackOverflow"),
     ("greenhouse", "Greenhouse"),
     ("lever", "Lever"),
     ("workable", "Workable"),
