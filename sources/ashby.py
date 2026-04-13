@@ -8,11 +8,11 @@ log = logging.getLogger(__name__)
 
 BASE = "https://api.ashbyhq.com/posting-api/job-board/{}"
 
-# Curated tech company board slugs
+# Curated tech company board slugs (verified active on Ashby)
 BOARDS = [
-    "ramp", "notion", "linear", "vercel", "retool",
-    "replit", "render", "supabase", "dbt-labs", "clerk",
-    "resend", "cal", "neon", "railway", "tinybird",
+    "ramp", "linear", "retool",
+    "replit", "render", "supabase", "clerk",
+    "resend", "neon", "railway",
 ]
 
 

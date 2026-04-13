@@ -8,12 +8,11 @@ log = logging.getLogger(__name__)
 
 BASE = "https://api.lever.co/v0/postings/{}"
 
-# Curated tech company slugs
+# Curated tech company slugs (verified active on Lever)
 COMPANIES = [
-    "spotify", "netlify", "docker", "auth0", "netlify",
-    "twitch", "robinhood", "lyft", "lever", "segment",
-    "nerdwallet", "openai", "anthropic", "figma", "palantir",
-    "mongodb", "elastic", "confluent", "databricks", "anduril",
+    "spotify", "palantir",
+    "Netflix", "JUUL", "reddit",
+    "mckinsey", "samsara", "verkada",
 ]
 
 

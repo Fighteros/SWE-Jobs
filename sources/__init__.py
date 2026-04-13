@@ -19,7 +19,6 @@ from sources.jooble import fetch_jooble
 from sources.reed import fetch_reed
 from sources.usajobs import fetch_usajobs
 from sources.devitjobs import fetch_devitjobs
-from sources.stackoverflow import fetch_stackoverflow
 from sources.greenhouse import fetch_greenhouse
 from sources.lever import fetch_lever
 from sources.workable import fetch_workable
@@ -54,7 +53,6 @@ ALL_FETCHERS = [
     ("Reed",             "reed",             fetch_reed),
     ("USAJobs",          "usajobs",          fetch_usajobs),
     ("DevITjobs",        "devitjobs",        fetch_devitjobs),
-    ("StackOverflow",    "stackoverflow",    fetch_stackoverflow),
     ("Greenhouse",       "greenhouse",       fetch_greenhouse),
     ("Lever",            "lever",            fetch_lever),
     ("Workable",         "workable",         fetch_workable),

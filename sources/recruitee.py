@@ -8,11 +8,9 @@ log = logging.getLogger(__name__)
 
 BASE = "https://{}.recruitee.com/api/offers/"
 
-# Curated tech company subdomains
+# Curated tech company subdomains (verified active on Recruitee)
 COMPANIES = [
-    "hotjar", "babbel", "wefox", "tradingview", "wolt",
-    "foodpanda", "hometogo", "omio", "depositphotos", "vimeo",
-    "pleo", "gorgias", "prezly", "teamtailor", "kenjo",
+    "gorgias", "prezly",
 ]
 
 

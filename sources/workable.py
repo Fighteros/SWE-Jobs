@@ -8,11 +8,11 @@ log = logging.getLogger(__name__)
 
 BASE = "https://apply.workable.com/api/v1/widget/accounts/{}"
 
-# Curated tech company subdomains
+# Curated tech company subdomains (verified active on Workable)
 COMPANIES = [
-    "rappi", "factorial", "taxfix", "beat", "blueground",
-    "solarisbank", "grammarly", "pipe", "miro", "deepl",
-    "typeform", "personio", "contentful", "messagebird", "cabify",
+    "rappi", "factorial", "beat", "blueground",
+    "grammarly", "miro",
+    "typeform", "personio", "cabify",
 ]
 
 

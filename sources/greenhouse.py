@@ -8,12 +8,13 @@ log = logging.getLogger(__name__)
 
 BASE = "https://boards-api.greenhouse.io/v1/boards/{}/jobs"
 
-# Curated tech company board tokens
+# Curated tech company board tokens (verified active on Greenhouse)
 BOARDS = [
-    "cloudflare", "figma", "airbnb", "netflix", "stripe",
-    "twilio", "datadog", "hashicorp", "gitlab", "discord",
-    "coinbase", "brex", "airtable", "notion", "vercel",
-    "snyk", "gusto", "plaid", "square", "vanta",
+    "cloudflare", "airbnb", "stripe",
+    "twilio", "datadog", "gitlab", "discord",
+    "coinbase", "brex", "airtable", "vercel",
+    "gusto", "duolingo", "canva", "hubspot",
+    "doordash", "instacart", "coupang", "reddit",
 ]
 
 

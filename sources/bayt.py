@@ -1,14 +1,13 @@
 """
-Bayt.com — HTML scraper for the Middle East's largest job board.
-Uses requests + regex to parse server-rendered search results.
+Bayt.com — Playwright-based scraper for the Middle East's largest job board.
+Uses Playwright to bypass bot protection and render JS-heavy pages.
 """
 
 import logging
 import re
-import time
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.http_utils import get_text
+from sources.playwright_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -16,51 +15,53 @@ BASE_URL = "https://www.bayt.com/en/international/jobs/"
 
 # Search queries targeting tech roles in MENA region
 SEARCHES = [
-    {"keyword": "software engineer"},
-    {"keyword": "software developer"},
-    {"keyword": "backend developer"},
-    {"keyword": "frontend developer"},
-    {"keyword": "full stack developer"},
-    {"keyword": "mobile developer"},
-    {"keyword": "flutter developer"},
-    {"keyword": "devops engineer"},
-    {"keyword": "data scientist"},
-    {"keyword": "machine learning engineer"},
-    {"keyword": "QA engineer"},
-    {"keyword": "cloud engineer"},
+    "software engineer",
+    "software developer",
+    "backend developer",
+    "frontend developer",
+    "full stack developer",
+    "mobile developer",
+    "flutter developer",
+    "devops engineer",
+    "data scientist",
+    "machine learning engineer",
+    "QA engineer",
+    "cloud engineer",
 ]
-
-REQUEST_DELAY = 3
 
 
 def fetch_bayt() -> list[Job]:
-    """Fetch jobs from Bayt.com."""
+    """Fetch jobs from Bayt.com using Playwright."""
     jobs = []
     seen_urls = set()
 
-    for i, params in enumerate(SEARCHES):
-        if i > 0:
-            time.sleep(REQUEST_DELAY)
+    try:
+        with get_browser_page() as page:
+            for keyword in SEARCHES:
+                try:
+                    keyword_slug = keyword.replace(" ", "-")
+                    url = f"{BASE_URL}{keyword_slug}-jobs/"
+                    page.goto(url, wait_until="domcontentloaded", timeout=20_000)
 
-        keyword_slug = params["keyword"].replace(" ", "-")
-        url = f"{BASE_URL}{keyword_slug}-jobs/"
+                    # Wait for job listing elements
+                    page.wait_for_selector(
+                        "li.has-pointer-d, div[data-job-id], div.jb-listing",
+                        timeout=10_000,
+                    )
 
-        html = get_text(url, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
-            ),
-        })
+                    html = page.content()
+                    parsed = _parse_search_html(html)
+                    for job in parsed:
+                        if job.url not in seen_urls:
+                            seen_urls.add(job.url)
+                            jobs.append(job)
 
-        if not html:
-            log.warning(f"Bayt: no response for '{params['keyword']}'")
-            continue
+                except Exception as e:
+                    log.warning(f"Bayt: error on search '{keyword}': {e}")
+                    continue
 
-        parsed = _parse_search_html(html)
-        for job in parsed:
-            if job.url not in seen_urls:
-                seen_urls.add(job.url)
-                jobs.append(job)
+    except Exception as e:
+        log.error(f"Bayt: browser launch failed: {e}")
 
     log.debug(f"Bayt: fetched {len(jobs)} jobs.")
     return jobs
@@ -77,14 +78,12 @@ def _parse_search_html(html: str) -> list[Job]:
     )
 
     if not cards:
-        # Fallback: try data-job-id pattern
         cards = re.findall(
             r'<div[^>]*data-job-id[^>]*>.*?</div>\s*</div>\s*</div>',
             html, re.DOTALL,
         )
 
     if not cards:
-        # Broader fallback: find job title links
         cards = re.findall(
             r'<div[^>]*class="[^"]*jb-listing[^"]*"[^>]*>.*?</div>\s*</div>',
             html, re.DOTALL,

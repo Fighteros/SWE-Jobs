@@ -1,65 +1,65 @@
 """
-Gulf Talent — HTML scraper for gulftalent.com (Gulf region job board).
-Uses requests + regex to parse search results for tech roles.
+Gulf Talent — Playwright-based scraper for gulftalent.com (Gulf region job board).
+Uses Playwright to bypass bot protection and render JS-heavy pages.
 """
 
 import logging
 import re
-import time
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.http_utils import get_text
+from sources.playwright_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://www.gulftalent.com"
 
 SEARCHES = [
-    {"keyword": "software engineer"},
-    {"keyword": "software developer"},
-    {"keyword": "backend developer"},
-    {"keyword": "frontend developer"},
-    {"keyword": "full stack developer"},
-    {"keyword": "mobile developer"},
-    {"keyword": "devops engineer"},
-    {"keyword": "data scientist"},
-    {"keyword": "machine learning engineer"},
-    {"keyword": "QA engineer"},
-    {"keyword": "cloud engineer"},
+    "software engineer",
+    "software developer",
+    "backend developer",
+    "frontend developer",
+    "full stack developer",
+    "mobile developer",
+    "devops engineer",
+    "data scientist",
+    "machine learning engineer",
+    "QA engineer",
+    "cloud engineer",
 ]
-
-REQUEST_DELAY = 3
 
 
 def fetch_gulftalent() -> list[Job]:
-    """Fetch jobs from Gulf Talent."""
+    """Fetch jobs from Gulf Talent using Playwright."""
     jobs = []
     seen_urls = set()
 
-    for i, params in enumerate(SEARCHES):
-        if i > 0:
-            time.sleep(REQUEST_DELAY)
+    try:
+        with get_browser_page() as page:
+            for keyword in SEARCHES:
+                try:
+                    kw = keyword.replace(" ", "+")
+                    url = f"{BASE_URL}/jobs/search?keywords={kw}&industry=information-technology"
+                    page.goto(url, wait_until="domcontentloaded", timeout=20_000)
 
-        keyword = params["keyword"].replace(" ", "+")
-        url = f"{BASE_URL}/jobs/search?keywords={keyword}&industry=information-technology"
+                    # Wait for job cards to appear
+                    page.wait_for_selector(
+                        "div.job-card, tr.listing, div.search-result",
+                        timeout=10_000,
+                    )
 
-        html = get_text(url, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        })
+                    html = page.content()
+                    parsed = _parse_search_html(html)
+                    for job in parsed:
+                        if job.url not in seen_urls:
+                            seen_urls.add(job.url)
+                            jobs.append(job)
 
-        if not html:
-            log.warning(f"GulfTalent: no response for '{params['keyword']}'")
-            continue
+                except Exception as e:
+                    log.warning(f"GulfTalent: error on search '{keyword}': {e}")
+                    continue
 
-        parsed = _parse_search_html(html)
-        for job in parsed:
-            if job.url not in seen_urls:
-                seen_urls.add(job.url)
-                jobs.append(job)
+    except Exception as e:
+        log.error(f"GulfTalent: browser launch failed: {e}")
 
     log.debug(f"GulfTalent: fetched {len(jobs)} jobs.")
     return jobs
@@ -69,21 +69,18 @@ def _parse_search_html(html: str) -> list[Job]:
     """Parse Gulf Talent search results HTML into Job objects."""
     jobs = []
 
-    # Gulf Talent uses structured job cards
     cards = re.findall(
         r'<div[^>]*class="[^"]*job-card[^"]*"[^>]*>.*?</div>\s*</div>',
         html, re.DOTALL,
     )
 
     if not cards:
-        # Fallback: try listing pattern
         cards = re.findall(
             r'<tr[^>]*class="[^"]*listing[^"]*"[^>]*>.*?</tr>',
             html, re.DOTALL,
         )
 
     if not cards:
-        # Broader fallback: find all job links
         cards = re.findall(
             r'<div[^>]*class="[^"]*search-result[^"]*"[^>]*>.*?</div>\s*</div>',
             html, re.DOTALL,
@@ -103,7 +100,6 @@ def _parse_search_html(html: str) -> list[Job]:
 
 def _parse_card(card: str) -> Job | None:
     """Parse a single Gulf Talent job card HTML into a Job."""
-    # Title & URL
     title_match = re.search(
         r'<a[^>]*href="(/[^"]*job[^"]*)"[^>]*>(.*?)</a>',
         card, re.DOTALL,
@@ -117,21 +113,18 @@ def _parse_card(card: str) -> Job | None:
         return None
     url = f"{BASE_URL}{href}" if not href.startswith("http") else href
 
-    # Company
     company_match = re.search(
         r'class="[^"]*company[^"]*"[^>]*>(.*?)</[^>]*>',
         card, re.DOTALL,
     )
     company = _clean(company_match.group(1)) if company_match else ""
 
-    # Location
     location_match = re.search(
         r'class="[^"]*location[^"]*"[^>]*>(.*?)</[^>]*>',
         card, re.DOTALL,
     )
     location = _clean(location_match.group(1)) if location_match else "Gulf"
 
-    # Salary
     salary_raw = ""
     salary_match = re.search(
         r'class="[^"]*salary[^"]*"[^>]*>(.*?)</[^>]*>',
@@ -140,7 +133,6 @@ def _parse_card(card: str) -> Job | None:
     if salary_match:
         salary_raw = _clean(salary_match.group(1))
 
-    # Date
     posted_at = None
     date_match = re.search(
         r'class="[^"]*date[^"]*"[^>]*>(.*?)</[^>]*>',
@@ -191,7 +183,6 @@ def _parse_relative_date(text: str) -> datetime | None:
         if delta:
             return now - delta
 
-    # Try DD/MM/YYYY or YYYY-MM-DD
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d %b %Y", "%b %d, %Y"):
         try:
             return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)

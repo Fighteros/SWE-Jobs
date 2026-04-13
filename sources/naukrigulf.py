@@ -1,66 +1,66 @@
 """
-NaukriGulf — HTML scraper for naukrigulf.com (Gulf region job board).
-Uses requests + regex to parse search results for tech roles.
+NaukriGulf — Playwright-based scraper for naukrigulf.com (Gulf region job board).
+Uses Playwright to render JS-heavy pages and parse job listings.
 """
 
 import logging
 import re
-import time
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.http_utils import get_text
+from sources.playwright_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://www.naukrigulf.com"
 
 SEARCHES = [
-    {"keyword": "software engineer", "location": ""},
-    {"keyword": "software developer", "location": ""},
-    {"keyword": "backend developer", "location": ""},
-    {"keyword": "frontend developer", "location": ""},
-    {"keyword": "full stack developer", "location": ""},
-    {"keyword": "mobile developer", "location": ""},
-    {"keyword": "flutter developer", "location": ""},
-    {"keyword": "devops engineer", "location": ""},
-    {"keyword": "data scientist", "location": ""},
-    {"keyword": "machine learning engineer", "location": ""},
-    {"keyword": "QA engineer", "location": ""},
-    {"keyword": "cloud engineer", "location": ""},
+    "software engineer",
+    "software developer",
+    "backend developer",
+    "frontend developer",
+    "full stack developer",
+    "mobile developer",
+    "flutter developer",
+    "devops engineer",
+    "data scientist",
+    "machine learning engineer",
+    "QA engineer",
+    "cloud engineer",
 ]
-
-REQUEST_DELAY = 3
 
 
 def fetch_naukrigulf() -> list[Job]:
-    """Fetch jobs from NaukriGulf."""
+    """Fetch jobs from NaukriGulf using Playwright."""
     jobs = []
     seen_urls = set()
 
-    for i, params in enumerate(SEARCHES):
-        if i > 0:
-            time.sleep(REQUEST_DELAY)
+    try:
+        with get_browser_page() as page:
+            for keyword in SEARCHES:
+                try:
+                    keyword_slug = keyword.replace(" ", "-")
+                    url = f"{BASE_URL}/{keyword_slug}-jobs"
+                    page.goto(url, wait_until="domcontentloaded", timeout=20_000)
 
-        keyword_slug = params["keyword"].replace(" ", "-")
-        url = f"{BASE_URL}/{keyword_slug}-jobs"
+                    # Wait for job cards to appear
+                    page.wait_for_selector(
+                        "div.srp-tuple, article, div.listing",
+                        timeout=10_000,
+                    )
 
-        html = get_text(url, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        })
+                    html = page.content()
+                    parsed = _parse_search_html(html)
+                    for job in parsed:
+                        if job.url not in seen_urls:
+                            seen_urls.add(job.url)
+                            jobs.append(job)
 
-        if not html:
-            log.warning(f"NaukriGulf: no response for '{params['keyword']}'")
-            continue
+                except Exception as e:
+                    log.warning(f"NaukriGulf: error on search '{keyword}': {e}")
+                    continue
 
-        parsed = _parse_search_html(html)
-        for job in parsed:
-            if job.url not in seen_urls:
-                seen_urls.add(job.url)
-                jobs.append(job)
+    except Exception as e:
+        log.error(f"NaukriGulf: browser launch failed: {e}")
 
     log.debug(f"NaukriGulf: fetched {len(jobs)} jobs.")
     return jobs
@@ -77,14 +77,12 @@ def _parse_search_html(html: str) -> list[Job]:
     )
 
     if not cards:
-        # Fallback: match by job link pattern
         cards = re.findall(
             r'<article[^>]*>.*?</article>',
             html, re.DOTALL,
         )
 
     if not cards:
-        # Broader fallback
         cards = re.findall(
             r'<div[^>]*class="[^"]*listing[^"]*"[^>]*>.*?</div>\s*</div>',
             html, re.DOTALL,
@@ -221,6 +219,13 @@ def _parse_relative_date(text: str) -> datetime | None:
         delta = deltas.get(unit)
         if delta:
             return now - delta
+
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d %b %Y", "%b %d, %Y"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+
     return None
 
 
