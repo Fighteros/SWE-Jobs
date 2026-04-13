@@ -33,7 +33,13 @@ class ColorFormatter(logging.Formatter):
         if record.levelno == logging.INFO:
             msg = self._highlight_numbers(msg)
 
-        return f"{color}{level}{self.RESET} {name} {msg}"
+        formatted = f"{color}{level}{self.RESET} {name} {msg}"
+
+        # Include exception traceback if present
+        if record.exc_info and record.exc_info[1] is not None:
+            formatted += "\n" + self.formatException(record.exc_info)
+
+        return formatted
 
     @staticmethod
     def _highlight_numbers(msg: str) -> str:
