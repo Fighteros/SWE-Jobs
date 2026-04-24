@@ -27,7 +27,7 @@ from sources.ashby import fetch_ashby
 from sources.smartrecruiters import fetch_smartrecruiters
 from sources.wuzzuf import fetch_wuzzuf
 from sources.glassdoor import fetch_glassdoor
-from sources.x_jobs import fetch_x_jobs
+# from sources.x_jobs import fetch_x_jobs
 # from sources.indeed import fetch_indeed
 # from sources.bayt import fetch_bayt
 # from sources.naukrigulf import fetch_naukrigulf
@@ -62,7 +62,7 @@ ALL_FETCHERS = [
     ("SmartRecruiters",  "smartrecruiters",  fetch_smartrecruiters),
     ("Wuzzuf",           "wuzzuf",           fetch_wuzzuf),
     ("Glassdoor",        "glassdoor",        fetch_glassdoor),
-    ("X (Twitter)",      "x",                fetch_x_jobs),
+    # ("X (Twitter)",      "x",                fetch_x_jobs),
     # ("Indeed",           "indeed",           fetch_indeed),
     # ("Bayt",             "bayt",             fetch_bayt),
     # ("NaukriGulf",       "naukrigulf",       fetch_naukrigulf),
