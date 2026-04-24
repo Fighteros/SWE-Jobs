@@ -155,10 +155,19 @@ def _parse_search_html(html: str, search_params: dict) -> list[Job]:
 
 
 def _parse_date(date_str: str | None) -> datetime | None:
-    """Parse an ISO date string into a timezone-aware datetime."""
+    """Parse an ISO date string into a timezone-aware datetime.
+
+    LinkedIn's guest search emits <time datetime="YYYY-MM-DD"> (date only) and
+    the feed is already filtered to the last 24h. Parsing that as midnight UTC
+    made freshly-posted jobs appear hours old (e.g. a job posted at 09:00 UTC+3
+    showed "7 hours ago" because posted_at was stored as 00:00 UTC). Return None
+    when precision is only a day — posted_display then hides the misleading value.
+    """
     if not date_str:
         return None
     try:
+        if "T" not in date_str:
+            return None
         dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
