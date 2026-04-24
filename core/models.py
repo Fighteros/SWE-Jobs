@@ -57,6 +57,7 @@ class Job:
     seniority: str = "mid"
     is_remote: bool = False
     country: str = ""
+    is_easy_apply: bool = False
 
     # Taxonomy
     tags: list = field(default_factory=list)

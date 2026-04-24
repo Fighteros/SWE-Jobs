@@ -58,12 +58,15 @@ def format_job_message(job: Job) -> str:
         lines.append(f"📋 {_escape_html(job.job_type)}")
     if job.is_remote:
         lines.append("🌍 Remote")
+    if job.is_easy_apply:
+        lines.append("⚡ Easy Apply on LinkedIn")
 
     if job.posted_display:
         lines.append(f"🕐 Posted {job.posted_display}")
 
     lines.append("")
-    lines.append(f'🔗 <a href="{job.url}">Apply Now</a>')
+    apply_label = "⚡ Easy Apply on LinkedIn" if job.is_easy_apply else "Apply Now"
+    lines.append(f'🔗 <a href="{job.url}">{apply_label}</a>')
     source_icon = SOURCE_ICON.get(job.source, "📡")
     lines.append(f"{source_icon} Source: {source}")
 

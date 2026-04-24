@@ -138,6 +138,14 @@ def _parse_search_html(html: str, search_params: dict) -> list[Job]:
             # Determine if remote from search params or location
             is_remote = search_params.get("f_WT") == "2" or "remote" in location.lower()
 
+            # Detect LinkedIn Easy Apply — the guest card HTML surfaces either a
+            # dedicated class (`job-search-card__easy-apply…`) or the literal
+            # "Easy Apply" label text when the job supports it.
+            is_easy_apply = bool(
+                re.search(r'job-search-card__easy-apply', card, re.IGNORECASE)
+                or re.search(r'>\s*Easy\s+Apply\s*<', card, re.IGNORECASE)
+            )
+
             jobs.append(Job(
                 title=title,
                 company=company,
@@ -145,6 +153,7 @@ def _parse_search_html(html: str, search_params: dict) -> list[Job]:
                 url=url,
                 source="linkedin",
                 is_remote=is_remote,
+                is_easy_apply=is_easy_apply,
                 posted_at=posted_at,
             ))
         except Exception as e:
