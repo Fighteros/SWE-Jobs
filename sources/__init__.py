@@ -22,6 +22,7 @@ from sources.devitjobs import fetch_devitjobs
 from sources.greenhouse import fetch_greenhouse
 from sources.lever import fetch_lever
 from sources.workable import fetch_workable
+from sources.workable_jobs import fetch_workable_jobs
 from sources.recruitee import fetch_recruitee
 from sources.ashby import fetch_ashby
 from sources.smartrecruiters import fetch_smartrecruiters
@@ -57,6 +58,7 @@ ALL_FETCHERS = [
     ("Greenhouse",       "greenhouse",       fetch_greenhouse),
     ("Lever",            "lever",            fetch_lever),
     ("Workable",         "workable",         fetch_workable),
+    ("Workable Jobs",    "workable_jobs",    fetch_workable_jobs),
     ("Recruitee",        "recruitee",        fetch_recruitee),
     ("Ashby",            "ashby",            fetch_ashby),
     ("SmartRecruiters",  "smartrecruiters",  fetch_smartrecruiters),
