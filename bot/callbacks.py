@@ -482,3 +482,34 @@ async def _handle_dm(query, user, context, data: str) -> None:
         parse_mode="HTML",
         reply_markup=alert_card_keyboard(position, enabled),
     )
+
+
+async def _handle_edit(query, user, context, data: str) -> None:
+    """Edit an existing alert: pre-seed wizard state, start at topics step."""
+    try:
+        position = int(data.split(":", 1)[1])
+    except ValueError:
+        log.warning(f"Bad edit callback: {data}")
+        return
+
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    alert = db.get_user_alert(db_user["id"], position)
+    if alert is None:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+
+    # Pre-seed wizard state
+    context.user_data["sub_topics"] = set(alert.get("topics") or [])
+    context.user_data["sub_seniority"] = set(alert.get("seniority") or [])
+    context.user_data["sub_locations"] = set(alert.get("locations") or [])
+    context.user_data["sub_sources"] = set(alert.get("sources") or [])
+    context.user_data["sub_keywords"] = list(alert.get("keywords") or [])
+    context.user_data["sub_min_salary"] = alert.get("min_salary")
+    context.user_data["edit_position"] = position
+
+    from bot.keyboards import topic_selection_keyboard
+    await query.edit_message_text(
+        f"Editing Alert #{position}\n\n"
+        "Step 1/4: Adjust topics (tap to toggle, then press Done):",
+        reply_markup=topic_selection_keyboard(context.user_data["sub_topics"]),
+    )
