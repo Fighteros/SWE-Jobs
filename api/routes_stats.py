@@ -1,9 +1,14 @@
 """Statistics, salary insights, and trend endpoints."""
 
+import logging
 from fastapi import APIRouter, Query, Request
 from typing import Optional
 from api.middleware import limiter
 from core import db
+from core.egytech import get_stats
+from core.egytech_mapping import parse_role_query, SENIORITY_TO_LEVEL
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -59,9 +64,6 @@ async def salary_stats(
     yoe_to: Optional[int] = Query(None, ge=1, le=26, description="Max years of experience (exclusive)"),
 ):
     """Egyptian tech salary statistics, sourced from egytech.fyi (April 2024 survey)."""
-    from core.egytech import get_stats
-    from core.egytech_mapping import parse_role_query, SENIORITY_TO_LEVEL
-
     empty = {
         "currency": "EGP",
         "period": "monthly",
@@ -74,6 +76,8 @@ async def salary_stats(
 
     title = parse_role_query(role) if role else None
     if not title:
+        if role:
+            log.info("salary stats: unmapped role=%r", role)
         return empty
 
     level = SENIORITY_TO_LEVEL.get(seniority) if seniority else None
@@ -94,7 +98,11 @@ async def salary_stats(
             "p75": s.get("p75Compensation"),
             "p90": s.get("p90Compensation"),
         },
-        "buckets": [{"label": b["bucket"], "count": b["count"]} for b in data.get("buckets", [])],
+        "buckets": [
+            {"label": b.get("bucket", ""), "count": b.get("count", 0)}
+            for b in data.get("buckets", [])
+            if isinstance(b, dict)
+        ],
         "filters": {"role": role, "seniority": seniority, "yoe_from": yoe_from, "yoe_to": yoe_to},
         "matched": True,
     }

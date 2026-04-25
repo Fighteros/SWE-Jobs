@@ -1,6 +1,7 @@
 """Tests for /api/stats/salary egytech-backed endpoint."""
 
 from unittest.mock import patch
+import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
@@ -8,14 +9,21 @@ from core.egytech import _cache
 
 
 app = create_app()
-client = TestClient(app)
 
 
-def setup_function():
+@pytest.fixture(scope="module")
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    _cache.clear()
+    yield
     _cache.clear()
 
 
-def test_returns_egytech_payload_for_known_role():
+def test_returns_egytech_payload_for_known_role(client):
     payload = {
         "stats": {
             "totalCount": 152, "median": 33800,
@@ -41,7 +49,7 @@ def test_returns_egytech_payload_for_known_role():
     assert body["filters"] == {"role": "backend", "seniority": "mid", "yoe_from": None, "yoe_to": None}
 
 
-def test_unmapped_role_returns_matched_false():
+def test_unmapped_role_returns_matched_false(client):
     resp = client.get("/api/stats/salary?role=xyzzy")
     assert resp.status_code == 200
     body = resp.json()
@@ -50,15 +58,18 @@ def test_unmapped_role_returns_matched_false():
     assert body["buckets"] == []
 
 
-def test_egytech_404_returns_matched_false():
+def test_egytech_404_returns_matched_false(client):
     with patch("core.egytech.requests.get") as mock_get:
         mock_get.return_value.status_code = 404
         resp = client.get("/api/stats/salary?role=backend&seniority=intern")
     assert resp.status_code == 200
-    assert resp.json()["matched"] is False
+    body = resp.json()
+    assert body["matched"] is False
+    assert body["stats"] is None
+    assert body["buckets"] == []
 
 
-def test_yoe_filter_passed_through():
+def test_yoe_filter_passed_through(client):
     payload = {"stats": {"totalCount": 5, "median": 100,
                          "p20Compensation": 80, "p75Compensation": 120, "p90Compensation": 140},
                "buckets": []}
