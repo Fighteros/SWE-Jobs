@@ -97,16 +97,22 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
     """
     Send DM alerts to subscribed users for matching jobs.
 
+    Per-user behavior:
+      - Skips users with notify_dm = FALSE (global kill switch).
+      - Iterates the user's alerts in position order; first matching alert
+        with dm_enabled=True wins (one DM per (user, job) pair).
+      - Applies the user-level blacklist after a match.
+      - Rate limits at MAX_DMS_PER_USER_PER_HOUR DMs per user.
+
     Args:
         bot: Telegram Bot instance
         jobs: List of (Job, db_id) tuples
 
     Returns: Total DMs sent
     """
-    # Get all users with subscriptions and notify_dm=True
     try:
         users = db._fetchall(
-            "SELECT * FROM users WHERE notify_dm = TRUE AND subscriptions != '{}'"
+            "SELECT * FROM users WHERE notify_dm = TRUE"
         )
     except Exception as e:
         log.error(f"Failed to fetch subscribers: {e}")
@@ -115,9 +121,12 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
     total_sent = 0
 
     for user_row in users:
-        subs = user_row.get("subscriptions", {})
         telegram_id = user_row["telegram_id"]
-        blacklist = db.get_blacklist(user_row["id"])
+        user_id = user_row["id"]
+        alerts = db.get_user_alerts(user_id)
+        if not alerts:
+            continue
+        blacklist = db.get_blacklist(user_id)
         dm_count = 0
 
         for job, db_id in jobs:
@@ -125,9 +134,16 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
                 log.info(f"Rate limit hit for user {telegram_id}")
                 break
 
-            if not _job_matches_subscription(job, subs):
-                continue
+            matched = None
+            for alert in alerts:
+                if not alert.get("dm_enabled", True):
+                    continue
+                if _job_matches_alert(job, alert):
+                    matched = alert
+                    break  # first-match wins
 
+            if matched is None:
+                continue
             if _job_blocked_by_blacklist(job, blacklist):
                 continue
 
@@ -135,7 +151,7 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
                 msg = format_job_message(job)
                 await bot.send_message(
                     chat_id=telegram_id,
-                    text=f"🔔 New matching job:\n\n{msg}",
+                    text=f"🔔 New matching job (Alert #{matched['position']}):\n\n{msg}",
                     parse_mode="HTML",
                     disable_web_page_preview=True,
                     reply_markup=job_buttons(db_id),
@@ -150,7 +166,6 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
                     "bot can't initiate conversation",
                     "have no rights to send a message",
                 )):
-                    # User blocked bot, deleted account, or never started a DM
                     db._execute(
                         "UPDATE users SET notify_dm = FALSE WHERE telegram_id = %s",
                         (telegram_id,),
@@ -160,5 +175,5 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
                 else:
                     log.warning(f"DM failed for {telegram_id}: {e}")
 
-    log.info(f"📬 Sent {total_sent} DM alerts to {len(users)} subscribers")
+    log.info(f"📬 Sent {total_sent} DM alerts across {len(users)} subscribers")
     return total_sent

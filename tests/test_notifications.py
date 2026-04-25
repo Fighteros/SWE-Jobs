@@ -138,3 +138,93 @@ class TestBlacklist:
         assert _job_blocked_by_blacklist(_make_job(title="Software Intern", company="Google"), bl)
         # Neither
         assert not _job_blocked_by_blacklist(_make_job(title="Senior Dev", company="Google"), bl)
+
+
+# ---------------------------------------------------------------------------
+# notify_subscribers — per-alert matching, first-match wins
+# ---------------------------------------------------------------------------
+
+import asyncio
+from unittest.mock import patch, AsyncMock, MagicMock
+
+
+class _FakeBot:
+    def __init__(self):
+        self.send_message = AsyncMock()
+
+
+class TestNotifySubscribersPerAlert:
+    def _run(self, coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    def _user(self, uid=1, telegram_id=42):
+        return {"id": uid, "telegram_id": telegram_id, "notify_dm": True}
+
+    def test_first_match_wins_one_dm_per_job(self):
+        """User has two alerts that both match the job → exactly one DM sent."""
+        from bot.notifications import notify_subscribers
+
+        job = _make_job(topics=["backend"], country="EG")
+        bot = _FakeBot()
+
+        alerts = [
+            {"position": 1, "topics": ["backend"], "seniority": [], "locations": [],
+             "sources": [], "keywords": [], "min_salary": None, "dm_enabled": True},
+            {"position": 2, "topics": ["backend"], "seniority": [], "locations": ["EG"],
+             "sources": [], "keywords": [], "min_salary": None, "dm_enabled": True},
+        ]
+
+        with patch("core.db._fetchall", return_value=[self._user()]), \
+             patch("core.db.get_user_alerts", return_value=alerts), \
+             patch("core.db.get_blacklist", return_value={"companies": [], "keywords": []}):
+            sent = self._run(notify_subscribers(bot, [(job, 99)]))
+
+        assert sent == 1
+        assert bot.send_message.call_count == 1
+
+    def test_dm_disabled_alert_is_skipped(self):
+        """An alert with dm_enabled=False does not produce a DM even if it matches."""
+        from bot.notifications import notify_subscribers
+
+        job = _make_job(topics=["backend"])
+        bot = _FakeBot()
+
+        alerts = [
+            {"position": 1, "topics": ["backend"], "seniority": [], "locations": [],
+             "sources": [], "keywords": [], "min_salary": None, "dm_enabled": False},
+        ]
+
+        with patch("core.db._fetchall", return_value=[self._user()]), \
+             patch("core.db.get_user_alerts", return_value=alerts), \
+             patch("core.db.get_blacklist", return_value={"companies": [], "keywords": []}):
+            sent = self._run(notify_subscribers(bot, [(job, 99)]))
+
+        assert sent == 0
+        assert bot.send_message.call_count == 0
+
+    def test_global_notify_dm_false_skips_user(self):
+        """User-level notify_dm=False suppresses all alerts for that user."""
+        from bot.notifications import notify_subscribers
+
+        job = _make_job(topics=["backend"])
+        bot = _FakeBot()
+
+        users = [{"id": 1, "telegram_id": 42, "notify_dm": False}]
+        # _fetchall is the SELECT users WHERE notify_dm = TRUE — should return empty
+        with patch("core.db._fetchall", return_value=[]):
+            sent = self._run(notify_subscribers(bot, [(job, 99)]))
+
+        assert sent == 0
+        assert bot.send_message.call_count == 0
+
+    def test_no_alerts_means_no_dm(self):
+        from bot.notifications import notify_subscribers
+        job = _make_job(topics=["backend"])
+        bot = _FakeBot()
+
+        with patch("core.db._fetchall", return_value=[self._user()]), \
+             patch("core.db.get_user_alerts", return_value=[]), \
+             patch("core.db.get_blacklist", return_value={"companies": [], "keywords": []}):
+            sent = self._run(notify_subscribers(bot, [(job, 99)]))
+
+        assert sent == 0
