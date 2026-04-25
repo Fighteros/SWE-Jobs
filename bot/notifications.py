@@ -68,11 +68,6 @@ def _job_matches_subscription(job: Job, subs: dict) -> bool:
         if not any(kw.lower() in title_lower for kw in sub_keywords):
             return False
 
-    # Check min salary
-    min_salary = subs.get("min_salary")
-    if min_salary and job.salary_max and job.salary_max < min_salary:
-        return False
-
     return True
 
 

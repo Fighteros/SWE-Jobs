@@ -121,8 +121,6 @@ async def cmd_mysubs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append(f"Sources: {', '.join(label_map.get(s, s) for s in subs['sources'])}")
     if subs.get("keywords"):
         lines.append(f"Keywords: {', '.join(subs['keywords'])}")
-    if subs.get("min_salary"):
-        lines.append(f"Min salary: ${subs['min_salary']:,}/year")
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
