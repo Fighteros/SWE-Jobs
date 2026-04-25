@@ -98,3 +98,38 @@ class TestGetUserAlert:
         from core.db import get_user_alert
         with patch("core.db._fetchone", return_value=None):
             assert get_user_alert(user_id=7, position=99) is None
+
+
+# ---------------------------------------------------------------------------
+# update_user_alert
+# ---------------------------------------------------------------------------
+
+class TestUpdateUserAlert:
+    def test_updates_filter_fields(self):
+        from core.db import update_user_alert
+        with patch("core.db._execute", return_value={"id": 1}) as mock_exec:
+            ok = update_user_alert(
+                user_id=7,
+                position=2,
+                alert={
+                    "topics": ["frontend"],
+                    "seniority": ["mid"],
+                    "locations": ["remote"],
+                    "sources": ["linkedin"],
+                    "keywords": ["react"],
+                    "min_salary": 80000,
+                },
+            )
+            assert ok is True
+            sql = mock_exec.call_args[0][0]
+            params = mock_exec.call_args[0][1]
+            assert "UPDATE user_alerts" in sql
+            assert "RETURNING id" in sql
+            # Last two params are the WHERE clause: user_id, position
+            assert params[-2] == 7
+            assert params[-1] == 2
+
+    def test_returns_false_when_no_row_matched(self):
+        from core.db import update_user_alert
+        with patch("core.db._execute", return_value=None):
+            assert update_user_alert(user_id=7, position=99, alert={"topics": []}) is False

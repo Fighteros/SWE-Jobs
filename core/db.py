@@ -561,6 +561,33 @@ def get_user_alert(user_id: int, position: int) -> Optional[dict]:
     )
 
 
+def update_user_alert(user_id: int, position: int, alert: dict) -> bool:
+    """
+    Replace the filter fields of an existing alert.
+    Returns True if a row was matched and updated, False otherwise.
+    """
+    row = _execute(
+        """
+        UPDATE user_alerts
+        SET topics = %s, seniority = %s, locations = %s, sources = %s,
+            keywords = %s, min_salary = %s
+        WHERE user_id = %s AND position = %s
+        RETURNING id
+        """,
+        (
+            alert.get("topics", []),
+            alert.get("seniority", []),
+            alert.get("locations", []),
+            alert.get("sources", []),
+            alert.get("keywords", []),
+            alert.get("min_salary"),
+            user_id,
+            position,
+        ),
+    )
+    return row is not None
+
+
 # =============================================================================
 # User Saved Jobs
 # =============================================================================
