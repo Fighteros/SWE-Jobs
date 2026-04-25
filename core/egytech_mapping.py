@@ -91,7 +91,7 @@ _ROLE_ALIASES: dict[str, str] = {
     "research": "research", "researcher": "research",
     "support": "technical_support", "technical support": "technical_support",
     "architect": "system_arch", "system architect": "system_arch",
-    "ai": "ai_automation", "automation": "ai_automation",
+    "ai": "ai_automation",
     "crm": "crm",
 }
 

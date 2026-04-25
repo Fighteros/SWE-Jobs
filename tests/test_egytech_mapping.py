@@ -61,3 +61,7 @@ class TestParseRoleQuery:
         assert parse_role_query("xyzzy") is None
         assert parse_role_query("") is None
         assert parse_role_query(None) is None
+
+    def test_automation_resolves_to_testing(self):
+        # 'automation' is ambiguous (QA vs AI); we resolve to QA/testing.
+        assert parse_role_query("automation") == "testing"
