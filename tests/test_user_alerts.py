@@ -236,3 +236,24 @@ class TestDeleteUserAlert:
 
         with patch("core.db._get_conn", fake_conn):
             assert delete_user_alert(user_id=7, position=99) is False
+
+
+# ---------------------------------------------------------------------------
+# delete_all_user_alerts
+# ---------------------------------------------------------------------------
+
+class TestDeleteAllUserAlerts:
+    def test_returns_count_of_deleted_rows(self):
+        from core.db import delete_all_user_alerts
+        with patch("core.db._fetchone", return_value={"count": 3}) as mock_fone:
+            count = delete_all_user_alerts(user_id=7)
+            assert count == 3
+            sql = mock_fone.call_args[0][0]
+            assert "DELETE FROM user_alerts" in sql
+            assert "WHERE user_id = %s" in sql
+            assert "RETURNING" in sql
+
+    def test_returns_zero_when_user_has_no_alerts(self):
+        from core.db import delete_all_user_alerts
+        with patch("core.db._fetchone", return_value=None):
+            assert delete_all_user_alerts(user_id=99) == 0

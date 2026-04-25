@@ -500,14 +500,6 @@ def get_or_create_user(telegram_id: int, username: str = "") -> dict:
     return new_row
 
 
-def update_user_subscriptions(telegram_id: int, subscriptions: dict) -> None:
-    """Persist a user's subscription preferences."""
-    _execute(
-        "UPDATE users SET subscriptions = %s WHERE telegram_id = %s",
-        (json.dumps(subscriptions), telegram_id),
-    )
-
-
 # =============================================================================
 # User Alerts (multi-alert subscriptions)
 # =============================================================================
@@ -623,6 +615,20 @@ def delete_user_alert(user_id: int, position: int) -> bool:
                 (user_id, position),
             )
     return True
+
+
+def delete_all_user_alerts(user_id: int) -> int:
+    """Delete every alert for a user. Returns the count of deleted rows."""
+    row = _fetchone(
+        """
+        WITH deleted AS (
+            DELETE FROM user_alerts WHERE user_id = %s RETURNING id
+        )
+        SELECT COUNT(*) AS count FROM deleted
+        """,
+        (user_id,),
+    )
+    return row["count"] if row else 0
 
 
 # =============================================================================
