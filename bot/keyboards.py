@@ -24,6 +24,7 @@ def topic_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
     """Build topic selection keyboard for /subscribe."""
     selected = selected or set()
     topics = [
+        ("general", "💻 All Jobs"),
         ("backend", "⚙️ Backend"),
         ("frontend", "🎨 Frontend"),
         ("fullstack", "🔄 Full Stack"),
@@ -36,6 +37,8 @@ def topic_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
         ("blockchain", "⛓️ Web3"),
         ("erp", "🏢 ERP"),
         ("internships", "🎓 Internships"),
+        ("egypt", "🇪🇬 Egypt"),
+        ("saudi", "🇸🇦 Saudi"),
     ]
     buttons = []
     row = []
