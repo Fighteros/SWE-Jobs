@@ -24,6 +24,7 @@ def topic_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
     """Build topic selection keyboard for /subscribe."""
     selected = selected or set()
     topics = [
+        ("general", "💻 All Jobs"),
         ("backend", "⚙️ Backend"),
         ("frontend", "🎨 Frontend"),
         ("fullstack", "🔄 Full Stack"),
@@ -36,6 +37,8 @@ def topic_selection_keyboard(selected: set[str] = None) -> InlineKeyboardMarkup:
         ("blockchain", "⛓️ Web3"),
         ("erp", "🏢 ERP"),
         ("internships", "🎓 Internships"),
+        ("egypt", "🇪🇬 Egypt"),
+        ("saudi", "🇸🇦 Saudi"),
     ]
     buttons = []
     row = []
@@ -176,3 +179,58 @@ def pagination_keyboard(current_page: int, total_pages: int, prefix: str) -> Inl
     if buttons:
         return InlineKeyboardMarkup([buttons])
     return None
+
+
+def alerts_unsub_keyboard(alerts: list[dict]) -> InlineKeyboardMarkup:
+    """Chooser shown by /unsubscribe — one row per alert plus All / Cancel."""
+    buttons = []
+    for a in alerts:
+        position = a["position"]
+        label = _alert_short_label(a)
+        buttons.append([InlineKeyboardButton(
+            f"Alert #{position} — {label}",
+            callback_data=f"unsub:{position}",
+        )])
+    buttons.append([InlineKeyboardButton(
+        "— Remove all alerts —",
+        callback_data="unsub:all",
+    )])
+    buttons.append([InlineKeyboardButton(
+        "Cancel",
+        callback_data="unsub:cancel",
+    )])
+    return InlineKeyboardMarkup(buttons)
+
+
+def alert_card_keyboard(position: int, dm_enabled: bool) -> InlineKeyboardMarkup:
+    """Per-alert action row in /mysubs: Edit / Delete / DM toggle."""
+    dm_label = "🔔 DM On" if dm_enabled else "🔕 DM Off"
+    dm_target = "off" if dm_enabled else "on"
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(f"✏ Edit #{position}", callback_data=f"edit:{position}"),
+        InlineKeyboardButton(f"🗑 Delete #{position}", callback_data=f"del:{position}"),
+        InlineKeyboardButton(dm_label, callback_data=f"dm:{position}:{dm_target}"),
+    ]])
+
+
+def confirm_remove_all_keyboard() -> InlineKeyboardMarkup:
+    """Confirmation prompt shown before bulk-deleting all alerts."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Yes, delete all", callback_data="unsub:all_confirm"),
+        InlineKeyboardButton("Cancel", callback_data="unsub:cancel"),
+    ]])
+
+
+def _alert_short_label(alert: dict) -> str:
+    """Compose a short human-readable label for an alert (used in chooser rows)."""
+    parts = []
+    topics = alert.get("topics") or []
+    if topics:
+        parts.append(", ".join(topics[:3]) + ("…" if len(topics) > 3 else ""))
+    seniority = alert.get("seniority") or []
+    if seniority:
+        parts.append("/".join(seniority))
+    locations = alert.get("locations") or []
+    if locations:
+        parts.append("/".join(locations[:3]))
+    return " · ".join(parts) if parts else "all jobs"

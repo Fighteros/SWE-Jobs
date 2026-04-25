@@ -57,6 +57,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_saved_page(query, user, data)
     elif data.startswith("msg_read:"):
         await _handle_msg_read(query, user, data)
+    elif data.startswith("unsub:"):
+        await _handle_unsub(query, user, context, data)
+    elif data.startswith("del:"):
+        await _handle_del(query, user, context, data)
+    elif data.startswith("dm:"):
+        await _handle_dm(query, user, context, data)
+    elif data.startswith("edit:"):
+        await _handle_edit(query, user, context, data)
     else:
         log.warning(f"Unknown callback data: {data}")
 
@@ -268,32 +276,47 @@ async def _handle_sub_source(query, user, context, data: str) -> None:
 
 
 async def _handle_sub_source_done(query, user, context) -> None:
-    """Source selection done, save subscription."""
+    """Source selection done — save the alert (create or edit)."""
     topics = list(context.user_data.get("sub_topics", set()))
     seniority = list(context.user_data.get("sub_seniority", set()))
     locations = list(context.user_data.get("sub_locations", set()))
     sources = list(context.user_data.get("sub_sources", set()))
 
-    subscriptions = {"topics": topics}
-    if seniority:
-        subscriptions["seniority"] = seniority
-    if locations:
-        subscriptions["locations"] = locations
-    if sources:
-        subscriptions["sources"] = sources
+    alert_payload = {
+        "topics": topics,
+        "seniority": seniority,
+        "locations": locations,
+        "sources": sources,
+        "keywords": list(context.user_data.get("sub_keywords", [])),
+        "min_salary": context.user_data.get("sub_min_salary"),
+    }
 
     db_user = db.get_or_create_user(user.id, user.username or "")
-    db.update_user_subscriptions(user.id, subscriptions)
+    edit_position = context.user_data.pop("edit_position", None)
+
+    if edit_position is not None:
+        ok = db.update_user_alert(db_user["id"], edit_position, alert_payload)
+        if ok:
+            header = f"✅ Alert #{edit_position} updated."
+        else:
+            header = f"⚠️ Alert #{edit_position} no longer exists."
+    else:
+        new_id = db.create_user_alert(db_user["id"], alert_payload)
+        # Look up its position to show in the confirmation
+        alerts = db.get_user_alerts(db_user["id"])
+        position = next((a["position"] for a in alerts if a["id"] == new_id), len(alerts))
+        header = f"✅ Alert #{position} created. You'll receive DM alerts for matching jobs."
 
     summary = _format_sub_summary(topics, seniority, locations, sources)
-
-    await query.edit_message_text(f"✅ Subscribed!\n\n{summary}\n\nYou'll receive DM alerts for matching jobs.")
+    await query.edit_message_text(f"{header}\n\n{summary}")
 
     # Clean up temp data
     context.user_data.pop("sub_topics", None)
     context.user_data.pop("sub_seniority", None)
     context.user_data.pop("sub_locations", None)
     context.user_data.pop("sub_sources", None)
+    context.user_data.pop("sub_keywords", None)
+    context.user_data.pop("sub_min_salary", None)
 
 
 def _format_sub_summary(topics, seniority, locations, sources) -> str:
@@ -338,3 +361,155 @@ async def _handle_msg_read(query, user, data: str) -> None:
         parse_mode="HTML",
     )
     await query.answer("Marked as read")
+
+
+async def _handle_unsub(query, user, context, data: str) -> None:
+    """Handle /unsubscribe chooser callbacks: unsub:<n>, unsub:all, unsub:all_confirm, unsub:cancel."""
+    action = data.split(":", 1)[1]
+    db_user = db.get_or_create_user(user.id, user.username or "")
+
+    if action == "cancel":
+        await query.edit_message_text("Cancelled.")
+        return
+
+    if action == "all":
+        from bot.keyboards import confirm_remove_all_keyboard
+        alerts = db.get_user_alerts(db_user["id"])
+        await query.edit_message_text(
+            f"⚠️ Remove ALL {len(alerts)} alerts? This cannot be undone.",
+            reply_markup=confirm_remove_all_keyboard(),
+        )
+        return
+
+    if action == "all_confirm":
+        count = db.delete_all_user_alerts(db_user["id"])
+        await query.edit_message_text(f"✅ Removed {count} alert(s).")
+        return
+
+    # unsub:<n>
+    try:
+        position = int(action)
+    except ValueError:
+        log.warning(f"Bad unsub callback: {data}")
+        return
+
+    ok = db.delete_user_alert(db_user["id"], position)
+    if not ok:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+    remaining = len(db.get_user_alerts(db_user["id"]))
+    await query.edit_message_text(
+        f"✅ Alert #{position} removed. You have {remaining} alert(s) left."
+    )
+
+
+async def _handle_del(query, user, context, data: str) -> None:
+    """Delete a single alert from a /mysubs card. Edits the card in place."""
+    try:
+        position = int(data.split(":", 1)[1])
+    except ValueError:
+        log.warning(f"Bad del callback: {data}")
+        return
+
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    ok = db.delete_user_alert(db_user["id"], position)
+    if not ok:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+    await query.edit_message_text(f"🗑 Alert #{position} removed.")
+
+
+async def _handle_dm(query, user, context, data: str) -> None:
+    """Toggle DM flag for one alert; re-render the card in place."""
+    parts = data.split(":")
+    if len(parts) != 3:
+        log.warning(f"Bad dm callback: {data}")
+        return
+    try:
+        position = int(parts[1])
+    except ValueError:
+        log.warning(f"Bad dm callback position: {data}")
+        return
+    target = parts[2]
+    if target not in ("on", "off"):
+        log.warning(f"Bad dm callback target: {data}")
+        return
+    enabled = target == "on"
+
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    ok = db.set_alert_dm_enabled(db_user["id"], position, enabled)
+    if not ok:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+
+    # Re-render the card with the new label.
+    alert = db.get_user_alert(db_user["id"], position)
+    if alert is None:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+
+    from bot.keyboards import (
+        alert_card_keyboard, LOCATION_OPTIONS, SOURCE_OPTIONS,
+    )
+    location_labels = dict(LOCATION_OPTIONS)
+    source_labels = dict(SOURCE_OPTIONS)
+
+    lines = [f"<b>#{position}</b>"]
+    if alert.get("topics"):
+        lines.append(f"Topics: {', '.join(alert['topics'])}")
+    if alert.get("seniority"):
+        lines.append(f"Seniority: {', '.join(alert['seniority'])}")
+    if alert.get("locations"):
+        lines.append(
+            f"Locations: {', '.join(location_labels.get(l, l) for l in alert['locations'])}"
+        )
+    else:
+        lines.append("Locations: All (no filter)")
+    if alert.get("sources"):
+        lines.append(
+            f"Sources: {', '.join(source_labels.get(s, s) for s in alert['sources'])}"
+        )
+    else:
+        lines.append("Sources: All (no filter)")
+    if alert.get("keywords"):
+        lines.append(f"Keywords: {', '.join(alert['keywords'])}")
+    if alert.get("min_salary"):
+        lines.append(f"Min salary: ${alert['min_salary']:,}/year")
+    lines.append("DM: " + ("🔔 on" if enabled else "🔕 off"))
+
+    await query.edit_message_text(
+        "\n".join(lines),
+        parse_mode="HTML",
+        reply_markup=alert_card_keyboard(position, enabled),
+    )
+
+
+async def _handle_edit(query, user, context, data: str) -> None:
+    """Edit an existing alert: pre-seed wizard state, start at topics step."""
+    try:
+        position = int(data.split(":", 1)[1])
+    except ValueError:
+        log.warning(f"Bad edit callback: {data}")
+        return
+
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    alert = db.get_user_alert(db_user["id"], position)
+    if alert is None:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+
+    # Pre-seed wizard state
+    context.user_data["sub_topics"] = set(alert.get("topics") or [])
+    context.user_data["sub_seniority"] = set(alert.get("seniority") or [])
+    context.user_data["sub_locations"] = set(alert.get("locations") or [])
+    context.user_data["sub_sources"] = set(alert.get("sources") or [])
+    context.user_data["sub_keywords"] = list(alert.get("keywords") or [])
+    context.user_data["sub_min_salary"] = alert.get("min_salary")
+    context.user_data["edit_position"] = position
+
+    from bot.keyboards import topic_selection_keyboard
+    await query.edit_message_text(
+        f"Editing Alert #{position}\n\n"
+        "Step 1/4: Adjust topics (tap to toggle, then press Done):",
+        reply_markup=topic_selection_keyboard(context.user_data["sub_topics"]),
+    )

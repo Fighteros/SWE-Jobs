@@ -22,9 +22,9 @@ HELP_TEXT = """
 🤖 <b>Programming Jobs Bot</b>
 
 <b>Commands:</b>
-/subscribe — Set up personalized job alerts
-/unsubscribe — Remove all subscriptions
-/mysubs — View your current filters
+/subscribe — Add a job alert (you can have multiple)
+/unsubscribe — Remove an alert (or all of them)
+/mysubs — View, edit, or toggle DMs for your alerts
 /search — Search jobs interactively
 /saved — View your saved jobs
 /applied — View your application history
@@ -91,38 +91,76 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show a chooser of alerts to remove (or 'remove all')."""
     user = update.effective_user
     db_user = db.get_or_create_user(user.id, user.username or "")
-    db.update_user_subscriptions(user.id, {})
-    await update.message.reply_text("✅ All subscriptions removed.")
+    alerts = db.get_user_alerts(db_user["id"])
+
+    if not alerts:
+        await update.message.reply_text(
+            "You have no active alerts. Use /subscribe to create one."
+        )
+        return
+
+    from bot.keyboards import alerts_unsub_keyboard
+    await update.message.reply_text(
+        "Which alert do you want to remove?",
+        reply_markup=alerts_unsub_keyboard(alerts),
+    )
 
 
 async def cmd_mysubs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     db_user = db.get_or_create_user(user.id, user.username or "")
-    subs = db_user.get("subscriptions", {})
+    alerts = db.get_user_alerts(db_user["id"])
 
-    if not subs or not subs.get("topics"):
-        await update.message.reply_text("No active subscriptions. Use /subscribe to set up alerts.")
+    if not alerts:
+        await update.message.reply_text(
+            "No active alerts. Use /subscribe to create one."
+        )
         return
 
-    lines = ["📋 <b>Your Subscriptions:</b>\n"]
-    if subs.get("topics"):
-        lines.append(f"Topics: {', '.join(subs['topics'])}")
-    if subs.get("seniority"):
-        lines.append(f"Seniority: {', '.join(subs['seniority'])}")
-    if subs.get("locations"):
-        from bot.keyboards import LOCATION_OPTIONS
-        label_map = dict(LOCATION_OPTIONS)
-        lines.append(f"Locations: {', '.join(label_map.get(l, l) for l in subs['locations'])}")
-    if subs.get("sources"):
-        from bot.keyboards import SOURCE_OPTIONS
-        label_map = dict(SOURCE_OPTIONS)
-        lines.append(f"Sources: {', '.join(label_map.get(s, s) for s in subs['sources'])}")
-    if subs.get("keywords"):
-        lines.append(f"Keywords: {', '.join(subs['keywords'])}")
+    from bot.keyboards import (
+        alert_card_keyboard, LOCATION_OPTIONS, SOURCE_OPTIONS,
+    )
+    location_labels = dict(LOCATION_OPTIONS)
+    source_labels = dict(SOURCE_OPTIONS)
 
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await update.message.reply_text(
+        f"📋 <b>Your alerts ({len(alerts)}):</b>",
+        parse_mode="HTML",
+    )
+
+    for a in alerts:
+        position = a["position"]
+        lines = [f"<b>#{position}</b>"]
+        if a.get("topics"):
+            lines.append(f"Topics: {', '.join(a['topics'])}")
+        if a.get("seniority"):
+            lines.append(f"Seniority: {', '.join(a['seniority'])}")
+        if a.get("locations"):
+            lines.append(
+                f"Locations: {', '.join(location_labels.get(l, l) for l in a['locations'])}"
+            )
+        else:
+            lines.append("Locations: All (no filter)")
+        if a.get("sources"):
+            lines.append(
+                f"Sources: {', '.join(source_labels.get(s, s) for s in a['sources'])}"
+            )
+        else:
+            lines.append("Sources: All (no filter)")
+        if a.get("keywords"):
+            lines.append(f"Keywords: {', '.join(a['keywords'])}")
+        if a.get("min_salary"):
+            lines.append(f"Min salary: ${a['min_salary']:,}/year")
+        lines.append("DM: " + ("🔔 on" if a.get("dm_enabled", True) else "🔕 off"))
+
+        await update.message.reply_text(
+            "\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=alert_card_keyboard(position, a.get("dm_enabled", True)),
+        )
 
 
 async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
