@@ -315,46 +315,72 @@ async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_salary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show salary insights. Usage: /salary <role>"""
+    """Egyptian salary insights via egytech.fyi. Usage: /salary <role> [seniority] [yoe]"""
+    from core.egytech import get_stats
+    from core.egytech_mapping import parse_role_query, SENIORITY_TO_LEVEL
+
     args = context.args
     if not args:
         await update.message.reply_text(
-            "Usage: /salary <role>\n"
-            "Example: /salary python\n"
-            "Example: /salary backend"
+            "Usage: /salary <role> [seniority] [yoe]\n"
+            "Examples:\n"
+            "  /salary backend\n"
+            "  /salary frontend mid\n"
+            "  /salary devops senior 5\n\n"
+            "Roles: backend, frontend, fullstack, mobile, devops, qa, security, "
+            "data engineer, data scientist, embedded, ui ux, product manager"
         )
         return
 
-    query = " ".join(args)
-    try:
-        stats = db._fetchone(
-            """SELECT
-                 COUNT(*) as count,
-                 AVG(salary_min) as avg_min,
-                 AVG(salary_max) as avg_max,
-                 MIN(salary_min) as lowest,
-                 MAX(salary_max) as highest
-               FROM jobs
-               WHERE salary_min IS NOT NULL
-                 AND title ILIKE %s
-                 AND created_at > now() - make_interval(days := 30)""",
-            (f"%{query}%",),
+    # Parse positional args: role (1+ words), seniority (single word from our enum), yoe (int).
+    raw = list(args)
+    yoe: int | None = None
+    if raw and raw[-1].isdigit():
+        yoe = int(raw.pop())
+
+    seniority: str | None = None
+    if raw and raw[-1].lower() in SENIORITY_TO_LEVEL:
+        seniority = raw.pop().lower()
+
+    role_text = " ".join(raw).strip().lower()
+    title = parse_role_query(role_text)
+
+    if not title:
+        await update.message.reply_text(
+            f"No data for '{role_text}'.\n\n"
+            "Try one of: backend, frontend, fullstack, mobile, devops, qa, security, "
+            "data engineer, data scientist, embedded, ui ux, product manager."
         )
-    except Exception as e:
-        await update.message.reply_text(f"Salary data unavailable: {e}")
         return
 
-    if not stats or not stats["count"] or stats["count"] == 0:
-        await update.message.reply_text(f"No salary data for '{query}'.")
+    level = SENIORITY_TO_LEVEL.get(seniority) if seniority else None
+    yoe_from = yoe
+    yoe_to = yoe + 1 if yoe is not None else None
+
+    data = get_stats(title=title, level=level, yoe_from=yoe_from, yoe_to=yoe_to)
+    if not data or "stats" not in data:
+        await update.message.reply_text(
+            f"No data for {title} / {seniority or 'any'} / yoe={yoe if yoe is not None else 'any'}.\n"
+            "Try a broader filter."
+        )
         return
+
+    s = data["stats"]
+    header = f"💰 {title}"
+    if seniority:
+        header += f" / {seniority}"
+    if yoe is not None:
+        header += f" / {yoe} yoe"
+    header += f" · n={s.get('totalCount', 0)}"
 
     lines = [
-        f"💰 <b>Salary Insights: {query}</b>\n",
-        f"Based on {stats['count']} jobs (last 30 days)\n",
-        f"Average: ${int(stats['avg_min']):,} - ${int(stats['avg_max']):,}/year",
-        f"Range: ${int(stats['lowest']):,} - ${int(stats['highest']):,}/year",
+        header,
+        f"Median: EGP {s.get('median', 0):,}/mo",
+        f"P20–P75: EGP {s.get('p20Compensation', 0):,} – {s.get('p75Compensation', 0):,}/mo",
+        f"P90: EGP {s.get('p90Compensation', 0):,}/mo",
+        "Source: egytech.fyi April 2024",
     ]
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    await update.message.reply_text("\n".join(lines))
 
 
 # ── Application tracking ────────────────────────────────────

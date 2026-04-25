@@ -1,11 +1,10 @@
 """
 Job enrichment pipeline.
-Chains: salary parsing -> seniority detection -> country detection -> topic routing.
+Chains: seniority detection -> country detection -> topic routing.
 """
 
 import logging
 from core.models import Job, _flatten_tags
-from core.salary_parser import parse_salary
 from core.seniority import detect_seniority
 from core.country_detector import detect_country
 from core.channels import CHANNELS
@@ -71,26 +70,18 @@ def _route_topics(job: Job) -> list[str]:
 
 def enrich_job(job: Job) -> Job:
     """
-    Enrich a job with parsed salary, seniority, country, and topic routing.
+    Enrich a job with seniority, country, and topic routing.
     Returns the same Job object with fields updated (mutates in place).
     """
-    # 1. Parse salary
-    if job.salary_raw and not job.salary_min:
-        result = parse_salary(job.salary_raw)
-        if result:
-            job.salary_min = result["min"]
-            job.salary_max = result["max"]
-            job.salary_currency = result["currency"]
-
-    # 2. Detect seniority (only if still default)
+    # 1. Detect seniority (only if still default)
     if job.seniority == "mid":
         job.seniority = detect_seniority(job.title)
 
-    # 3. Detect country (only if empty)
+    # 2. Detect country (only if empty)
     if not job.country:
         job.country = detect_country(job.location)
 
-    # 4. Route to topics (always recalculate)
+    # 3. Route to topics (always recalculate)
     job.topics = _route_topics(job)
 
     return job

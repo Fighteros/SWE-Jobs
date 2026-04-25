@@ -31,6 +31,8 @@ def _escape_html(text: str) -> str:
 
 def format_job_message(job: Job) -> str:
     """Format a job as an HTML Telegram message."""
+    from core.egytech import market_salary_for_job
+
     emoji = job.emoji
     title = _escape_html(job.title)
     company = _escape_html(job.company) if job.company else "Unknown"
@@ -43,8 +45,10 @@ def format_job_message(job: Job) -> str:
         f"📍 {location}",
     ]
 
-    if job.salary_display:
-        lines.append(f"💰 {_escape_html(job.salary_display)}")
+    market = market_salary_for_job(job)
+    if market:
+        lines.append(f"💰 Market: {_escape_html(market)}")
+
     if job.seniority and job.seniority != "mid":
         seniority_labels = {
             "intern": "🎓 Intern", "junior": "🌱 Junior",

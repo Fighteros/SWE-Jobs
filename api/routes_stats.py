@@ -1,9 +1,14 @@
 """Statistics, salary insights, and trend endpoints."""
 
+import logging
 from fastapi import APIRouter, Query, Request
 from typing import Optional
 from api.middleware import limiter
 from core import db
+from core.egytech import get_stats
+from core.egytech_mapping import parse_role_query, SENIORITY_TO_LEVEL
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -53,52 +58,53 @@ async def stats_summary(request: Request):
 @limiter.limit("20/minute")
 async def salary_stats(
     request: Request,
-    role: Optional[str] = Query(None, description="Role keyword (e.g. backend, python)"),
-    country: Optional[str] = Query(None, description="Country ISO code"),
-    seniority: Optional[str] = Query(None, description="Seniority level"),
+    role: Optional[str] = Query(None, description="Free-text role (e.g. backend, python, react)"),
+    seniority: Optional[str] = Query(None, description="Our seniority enum (intern/junior/mid/senior/lead/executive)"),
+    yoe_from: Optional[int] = Query(None, ge=0, le=20, description="Min years of experience (inclusive)"),
+    yoe_to: Optional[int] = Query(None, ge=1, le=26, description="Max years of experience (exclusive)"),
 ):
-    """Salary breakdown by role, country, and seniority."""
-    conditions = ["salary_min IS NOT NULL", "created_at > now() - make_interval(days := 30)"]
-    params = []
+    """Egyptian tech salary statistics, sourced from egytech.fyi (April 2024 survey)."""
+    empty = {
+        "currency": "EGP",
+        "period": "monthly",
+        "source": "egytech.fyi April 2024 survey",
+        "stats": None,
+        "buckets": [],
+        "filters": {"role": role, "seniority": seniority, "yoe_from": yoe_from, "yoe_to": yoe_to},
+        "matched": False,
+    }
 
-    if role:
-        conditions.append("title ILIKE %s")
-        params.append(f"%{role}%")
-    if country:
-        conditions.append("country = %s")
-        params.append(country)
-    if seniority:
-        conditions.append("seniority = %s")
-        params.append(seniority)
+    title = parse_role_query(role) if role else None
+    if not title:
+        if role:
+            log.info("salary stats: unmapped role=%r", role)
+        return empty
 
-    where = " AND ".join(conditions)
+    level = SENIORITY_TO_LEVEL.get(seniority) if seniority else None
 
-    overall = db._fetchone(
-        f"""SELECT
-              COUNT(*) as sample_size,
-              ROUND(AVG(salary_min)) as avg_min,
-              ROUND(AVG(salary_max)) as avg_max,
-              MIN(salary_min) as lowest,
-              MAX(salary_max) as highest,
-              ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary_min)) as median_min
-            FROM jobs WHERE {where}""",
-        tuple(params),
-    )
+    data = get_stats(title=title, level=level, yoe_from=yoe_from, yoe_to=yoe_to)
+    if not data or "stats" not in data:
+        return empty
 
-    by_seniority = db._fetchall(
-        f"""SELECT seniority,
-              COUNT(*) as count,
-              ROUND(AVG(salary_min)) as avg_min,
-              ROUND(AVG(salary_max)) as avg_max
-            FROM jobs WHERE {where}
-            GROUP BY seniority ORDER BY avg_min DESC""",
-        tuple(params),
-    )
-
+    s = data["stats"]
     return {
-        "overall": overall,
-        "by_seniority": by_seniority,
-        "filters": {"role": role, "country": country, "seniority": seniority},
+        "currency": "EGP",
+        "period": "monthly",
+        "source": "egytech.fyi April 2024 survey",
+        "stats": {
+            "sample_size": s.get("totalCount", 0),
+            "median": s.get("median"),
+            "p20": s.get("p20Compensation"),
+            "p75": s.get("p75Compensation"),
+            "p90": s.get("p90Compensation"),
+        },
+        "buckets": [
+            {"label": b.get("bucket", ""), "count": b.get("count", 0)}
+            for b in data.get("buckets", [])
+            if isinstance(b, dict)
+        ],
+        "filters": {"role": role, "seniority": seniority, "yoe_from": yoe_from, "yoe_to": yoe_to},
+        "matched": True,
     }
 
 
