@@ -500,12 +500,135 @@ def get_or_create_user(telegram_id: int, username: str = "") -> dict:
     return new_row
 
 
-def update_user_subscriptions(telegram_id: int, subscriptions: dict) -> None:
-    """Persist a user's subscription preferences."""
-    _execute(
-        "UPDATE users SET subscriptions = %s WHERE telegram_id = %s",
-        (json.dumps(subscriptions), telegram_id),
+# =============================================================================
+# User Alerts (multi-alert subscriptions)
+# =============================================================================
+
+def create_user_alert(user_id: int, alert: dict) -> int:
+    """
+    Insert a new alert for the user at the next available 1-based position.
+    Position is computed atomically inside the INSERT to avoid a race when
+    two callbacks fire near-simultaneously for the same user.
+    `alert` keys: topics, seniority, locations, sources, keywords (all lists),
+    min_salary (int|None). Returns the new alert id.
+    New alerts default to dm_enabled=True.
+    """
+    new_row = _fetchone(
+        """
+        INSERT INTO user_alerts
+            (user_id, position, topics, seniority, locations, sources, keywords, min_salary)
+        SELECT
+            %s,
+            COALESCE((SELECT MAX(position) FROM user_alerts WHERE user_id = %s), 0) + 1,
+            %s, %s, %s, %s, %s, %s
+        RETURNING id
+        """,
+        (
+            user_id,
+            user_id,
+            alert.get("topics", []),
+            alert.get("seniority", []),
+            alert.get("locations", []),
+            alert.get("sources", []),
+            alert.get("keywords", []),
+            alert.get("min_salary"),
+        ),
     )
+    return new_row["id"]
+
+
+def get_user_alerts(user_id: int) -> list[dict]:
+    """Return all alerts for a user, ordered by position ascending."""
+    return _fetchall(
+        "SELECT * FROM user_alerts WHERE user_id = %s ORDER BY position ASC",
+        (user_id,),
+    )
+
+
+def get_user_alert(user_id: int, position: int) -> Optional[dict]:
+    """Return the alert at the given 1-based position, or None."""
+    return _fetchone(
+        "SELECT * FROM user_alerts WHERE user_id = %s AND position = %s",
+        (user_id, position),
+    )
+
+
+def update_user_alert(user_id: int, position: int, alert: dict) -> bool:
+    """
+    Replace the filter fields of an existing alert.
+    Returns True if a row was matched and updated, False otherwise.
+    """
+    row = _execute(
+        """
+        UPDATE user_alerts
+        SET topics = %s, seniority = %s, locations = %s, sources = %s,
+            keywords = %s, min_salary = %s
+        WHERE user_id = %s AND position = %s
+        RETURNING id
+        """,
+        (
+            alert.get("topics", []),
+            alert.get("seniority", []),
+            alert.get("locations", []),
+            alert.get("sources", []),
+            alert.get("keywords", []),
+            alert.get("min_salary"),
+            user_id,
+            position,
+        ),
+    )
+    return row is not None
+
+
+def set_alert_dm_enabled(user_id: int, position: int, enabled: bool) -> bool:
+    """Toggle the per-alert DM flag. Returns True if a row was updated."""
+    row = _execute(
+        """
+        UPDATE user_alerts SET dm_enabled = %s
+        WHERE user_id = %s AND position = %s
+        RETURNING id
+        """,
+        (enabled, user_id, position),
+    )
+    return row is not None
+
+
+def delete_user_alert(user_id: int, position: int) -> bool:
+    """
+    Delete one alert and re-pack any higher positions in the same transaction
+    so positions stay contiguous. Returns True if a row was deleted.
+    """
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "DELETE FROM user_alerts WHERE user_id = %s AND position = %s",
+                (user_id, position),
+            )
+            if cur.rowcount == 0:
+                return False
+            cur.execute(
+                """
+                UPDATE user_alerts
+                SET position = position - 1
+                WHERE user_id = %s AND position > %s
+                """,
+                (user_id, position),
+            )
+    return True
+
+
+def delete_all_user_alerts(user_id: int) -> int:
+    """Delete every alert for a user. Returns the count of deleted rows."""
+    row = _fetchone(
+        """
+        WITH deleted AS (
+            DELETE FROM user_alerts WHERE user_id = %s RETURNING id
+        )
+        SELECT COUNT(*) AS count FROM deleted
+        """,
+        (user_id,),
+    )
+    return row["count"] if row else 0
 
 
 # =============================================================================
