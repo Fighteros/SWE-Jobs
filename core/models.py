@@ -164,12 +164,7 @@ class Job:
 
     @property
     def salary_display(self) -> str:
-        """Format salary for human display."""
-        if self.salary_min and self.salary_max:
-            currency = self.salary_currency or "$"
-            return f"{currency}{self.salary_min:,} – {currency}{self.salary_max:,}"
-        if self.salary_raw:
-            return self.salary_raw
+        """Posting-derived salary is no longer surfaced; use core.egytech.market_salary_for_job instead."""
         return ""
 
     # ─── DB Serialisation ────────────────────────────────────────
