@@ -35,6 +35,8 @@ ALTER TABLE user_alerts ENABLE ROW LEVEL SECURITY;
 -- Data migration: copy each user's existing subscriptions JSONB into a row.
 -- Per-alert dm_enabled defaults to TRUE; users.notify_dm remains the global
 -- kill switch and is independent.
+-- Idempotency guard: skip users who already have a position=1 alert.
+-- Safe-cast guard: ignore non-numeric min_salary strings rather than aborting.
 INSERT INTO user_alerts (user_id, position, topics, seniority, locations, sources, keywords, min_salary, dm_enabled)
 SELECT
     u.id,
@@ -44,9 +46,18 @@ SELECT
     COALESCE(ARRAY(SELECT jsonb_array_elements_text(u.subscriptions->'locations')), '{}'),
     COALESCE(ARRAY(SELECT jsonb_array_elements_text(u.subscriptions->'sources')),   '{}'),
     COALESCE(ARRAY(SELECT jsonb_array_elements_text(u.subscriptions->'keywords')),  '{}'),
-    NULLIF((u.subscriptions->>'min_salary')::int, 0),
+    NULLIF(
+        CASE WHEN (u.subscriptions->>'min_salary') ~ '^\d+$'
+             THEN (u.subscriptions->>'min_salary')::int
+             ELSE NULL
+        END,
+        0
+    ),
     TRUE
 FROM users u
 WHERE u.subscriptions IS NOT NULL
   AND u.subscriptions <> '{}'::jsonb
-  AND (u.subscriptions->'topics') IS NOT NULL;
+  AND NOT EXISTS (
+      SELECT 1 FROM user_alerts ua
+      WHERE ua.user_id = u.id AND ua.position = 1
+  );
