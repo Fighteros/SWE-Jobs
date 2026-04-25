@@ -509,6 +509,44 @@ def update_user_subscriptions(telegram_id: int, subscriptions: dict) -> None:
 
 
 # =============================================================================
+# User Alerts (multi-alert subscriptions)
+# =============================================================================
+
+def create_user_alert(user_id: int, alert: dict) -> int:
+    """
+    Insert a new alert for the user at the next available 1-based position.
+    `alert` keys: topics, seniority, locations, sources, keywords (all lists),
+    min_salary (int|None). Returns the new alert id.
+    New alerts default to dm_enabled=True.
+    """
+    max_row = _fetchone(
+        "SELECT MAX(position) AS max_pos FROM user_alerts WHERE user_id = %s",
+        (user_id,),
+    )
+    next_position = (max_row["max_pos"] or 0) + 1
+
+    new_row = _fetchone(
+        """
+        INSERT INTO user_alerts
+            (user_id, position, topics, seniority, locations, sources, keywords, min_salary)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            user_id,
+            next_position,
+            alert.get("topics", []),
+            alert.get("seniority", []),
+            alert.get("locations", []),
+            alert.get("sources", []),
+            alert.get("keywords", []),
+            alert.get("min_salary"),
+        ),
+    )
+    return new_row["id"]
+
+
+# =============================================================================
 # User Saved Jobs
 # =============================================================================
 
