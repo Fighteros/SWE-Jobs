@@ -588,6 +588,19 @@ def update_user_alert(user_id: int, position: int, alert: dict) -> bool:
     return row is not None
 
 
+def set_alert_dm_enabled(user_id: int, position: int, enabled: bool) -> bool:
+    """Toggle the per-alert DM flag. Returns True if a row was updated."""
+    row = _execute(
+        """
+        UPDATE user_alerts SET dm_enabled = %s
+        WHERE user_id = %s AND position = %s
+        RETURNING id
+        """,
+        (enabled, user_id, position),
+    )
+    return row is not None
+
+
 # =============================================================================
 # User Saved Jobs
 # =============================================================================

@@ -133,3 +133,25 @@ class TestUpdateUserAlert:
         from core.db import update_user_alert
         with patch("core.db._execute", return_value=None):
             assert update_user_alert(user_id=7, position=99, alert={"topics": []}) is False
+
+
+# ---------------------------------------------------------------------------
+# set_alert_dm_enabled
+# ---------------------------------------------------------------------------
+
+class TestSetAlertDmEnabled:
+    def test_returns_true_when_alert_exists(self):
+        from core.db import set_alert_dm_enabled
+        with patch("core.db._execute", return_value={"id": 5}) as mock_exec:
+            ok = set_alert_dm_enabled(user_id=7, position=1, enabled=False)
+            assert ok is True
+            sql = mock_exec.call_args[0][0]
+            params = mock_exec.call_args[0][1]
+            assert "UPDATE user_alerts" in sql
+            assert "dm_enabled" in sql
+            assert params == (False, 7, 1)
+
+    def test_returns_false_when_alert_missing(self):
+        from core.db import set_alert_dm_enabled
+        with patch("core.db._execute", return_value=None):
+            assert set_alert_dm_enabled(user_id=7, position=99, enabled=True) is False
