@@ -515,26 +515,25 @@ def update_user_subscriptions(telegram_id: int, subscriptions: dict) -> None:
 def create_user_alert(user_id: int, alert: dict) -> int:
     """
     Insert a new alert for the user at the next available 1-based position.
+    Position is computed atomically inside the INSERT to avoid a race when
+    two callbacks fire near-simultaneously for the same user.
     `alert` keys: topics, seniority, locations, sources, keywords (all lists),
     min_salary (int|None). Returns the new alert id.
     New alerts default to dm_enabled=True.
     """
-    max_row = _fetchone(
-        "SELECT MAX(position) AS max_pos FROM user_alerts WHERE user_id = %s",
-        (user_id,),
-    )
-    next_position = (max_row["max_pos"] or 0) + 1
-
     new_row = _fetchone(
         """
         INSERT INTO user_alerts
             (user_id, position, topics, seniority, locations, sources, keywords, min_salary)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        SELECT
+            %s,
+            COALESCE((SELECT MAX(position) FROM user_alerts WHERE user_id = %s), 0) + 1,
+            %s, %s, %s, %s, %s, %s
         RETURNING id
         """,
         (
             user_id,
-            next_position,
+            user_id,
             alert.get("topics", []),
             alert.get("seniority", []),
             alert.get("locations", []),
