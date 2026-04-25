@@ -15,13 +15,15 @@ async def search_jobs(
     q: Optional[str] = Query(None, description="Search query"),
     topic: Optional[str] = Query(None, description="Filter by topic"),
     seniority: Optional[str] = Query(None, description="Filter by seniority"),
-    min_salary: Optional[int] = Query(None, description="Minimum salary (yearly)"),
     remote: Optional[bool] = Query(None, description="Remote only"),
     country: Optional[str] = Query(None, description="Country ISO code"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=50, description="Items per page"),
 ):
     """Search and filter jobs."""
+    from core.egytech import market_salary_for_job
+    from core.models import Job
+
     conditions_sql = ["sent_at IS NOT NULL"]
     params_sql = []
 
@@ -34,9 +36,6 @@ async def search_jobs(
     if seniority:
         conditions_sql.append("seniority = %s")
         params_sql.append(seniority)
-    if min_salary:
-        conditions_sql.append("salary_max >= %s")
-        params_sql.append(min_salary)
     if remote:
         conditions_sql.append("is_remote = TRUE")
     if country:
@@ -63,6 +62,14 @@ async def search_jobs(
             LIMIT %s OFFSET %s""",
         tuple(params_sql) + (per_page, offset),
     )
+
+    # Enrich each row with the egytech market reference (cache-backed; cheap after warmup).
+    for row in rows:
+        try:
+            job = Job.from_db_row(row)
+            row["market_salary"] = market_salary_for_job(job)
+        except Exception:
+            row["market_salary"] = None
 
     return {
         "jobs": rows,

@@ -10,10 +10,6 @@ const SENIORITY_COLORS: Record<string, string> = {
 };
 
 export default function JobCard({ job }: { job: Job }) {
-  const salaryDisplay = job.salary_min && job.salary_max
-    ? `${job.salary_currency || '$'}${job.salary_min.toLocaleString()} - ${job.salary_max.toLocaleString()}`
-    : job.salary_raw || null;
-
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start">
@@ -28,7 +24,14 @@ export default function JobCard({ job }: { job: Job }) {
       <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
         <span>{job.location || 'Not specified'}</span>
         {job.is_remote && <span className="text-green-600">Remote</span>}
-        {salaryDisplay && <span className="text-green-700 font-medium">{salaryDisplay}</span>}
+        {job.market_salary && (
+          <span
+            className="text-green-700 font-medium"
+            title="Median range from egytech.fyi April 2024 survey for this role/level"
+          >
+            Market: {job.market_salary}
+          </span>
+        )}
         <span>{job.original_source || job.source}</span>
       </div>
       {job.tags.length > 0 && (
