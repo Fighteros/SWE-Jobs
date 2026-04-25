@@ -22,9 +22,9 @@ HELP_TEXT = """
 🤖 <b>Programming Jobs Bot</b>
 
 <b>Commands:</b>
-/subscribe — Set up personalized job alerts
-/unsubscribe — Remove all subscriptions
-/mysubs — View your current filters
+/subscribe — Add a job alert (you can have multiple)
+/unsubscribe — Remove an alert (or all of them)
+/mysubs — View, edit, or toggle DMs for your alerts
 /search — Search jobs interactively
 /saved — View your saved jobs
 /applied — View your application history
