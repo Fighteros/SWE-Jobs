@@ -57,6 +57,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await _handle_saved_page(query, user, data)
     elif data.startswith("msg_read:"):
         await _handle_msg_read(query, user, data)
+    elif data.startswith("unsub:"):
+        await _handle_unsub(query, user, context, data)
+    elif data.startswith("del:"):
+        await _handle_del(query, user, context, data)
+    elif data.startswith("dm:"):
+        await _handle_dm(query, user, context, data)
+    elif data.startswith("edit:"):
+        await _handle_edit(query, user, context, data)
     else:
         log.warning(f"Unknown callback data: {data}")
 
@@ -353,3 +361,43 @@ async def _handle_msg_read(query, user, data: str) -> None:
         parse_mode="HTML",
     )
     await query.answer("Marked as read")
+
+
+async def _handle_unsub(query, user, context, data: str) -> None:
+    """Handle /unsubscribe chooser callbacks: unsub:<n>, unsub:all, unsub:all_confirm, unsub:cancel."""
+    action = data.split(":", 1)[1]
+    db_user = db.get_or_create_user(user.id, user.username or "")
+
+    if action == "cancel":
+        await query.edit_message_text("Cancelled.")
+        return
+
+    if action == "all":
+        from bot.keyboards import confirm_remove_all_keyboard
+        alerts = db.get_user_alerts(db_user["id"])
+        await query.edit_message_text(
+            f"⚠️ Remove ALL {len(alerts)} alerts? This cannot be undone.",
+            reply_markup=confirm_remove_all_keyboard(),
+        )
+        return
+
+    if action == "all_confirm":
+        count = db.delete_all_user_alerts(db_user["id"])
+        await query.edit_message_text(f"✅ Removed {count} alert(s).")
+        return
+
+    # unsub:<n>
+    try:
+        position = int(action)
+    except ValueError:
+        log.warning(f"Bad unsub callback: {data}")
+        return
+
+    ok = db.delete_user_alert(db_user["id"], position)
+    if not ok:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+    remaining = len(db.get_user_alerts(db_user["id"]))
+    await query.edit_message_text(
+        f"✅ Alert #{position} removed. You have {remaining} alert(s) left."
+    )
