@@ -417,3 +417,68 @@ async def _handle_del(query, user, context, data: str) -> None:
         await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
         return
     await query.edit_message_text(f"🗑 Alert #{position} removed.")
+
+
+async def _handle_dm(query, user, context, data: str) -> None:
+    """Toggle DM flag for one alert; re-render the card in place."""
+    parts = data.split(":")
+    if len(parts) != 3:
+        log.warning(f"Bad dm callback: {data}")
+        return
+    try:
+        position = int(parts[1])
+    except ValueError:
+        log.warning(f"Bad dm callback position: {data}")
+        return
+    target = parts[2]
+    if target not in ("on", "off"):
+        log.warning(f"Bad dm callback target: {data}")
+        return
+    enabled = target == "on"
+
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    ok = db.set_alert_dm_enabled(db_user["id"], position, enabled)
+    if not ok:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+
+    # Re-render the card with the new label.
+    alert = db.get_user_alert(db_user["id"], position)
+    if alert is None:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+
+    from bot.keyboards import (
+        alert_card_keyboard, LOCATION_OPTIONS, SOURCE_OPTIONS,
+    )
+    location_labels = dict(LOCATION_OPTIONS)
+    source_labels = dict(SOURCE_OPTIONS)
+
+    lines = [f"<b>#{position}</b>"]
+    if alert.get("topics"):
+        lines.append(f"Topics: {', '.join(alert['topics'])}")
+    if alert.get("seniority"):
+        lines.append(f"Seniority: {', '.join(alert['seniority'])}")
+    if alert.get("locations"):
+        lines.append(
+            f"Locations: {', '.join(location_labels.get(l, l) for l in alert['locations'])}"
+        )
+    else:
+        lines.append("Locations: All (no filter)")
+    if alert.get("sources"):
+        lines.append(
+            f"Sources: {', '.join(source_labels.get(s, s) for s in alert['sources'])}"
+        )
+    else:
+        lines.append("Sources: All (no filter)")
+    if alert.get("keywords"):
+        lines.append(f"Keywords: {', '.join(alert['keywords'])}")
+    if alert.get("min_salary"):
+        lines.append(f"Min salary: ${alert['min_salary']:,}/year")
+    lines.append("DM: " + ("🔔 on" if enabled else "🔕 off"))
+
+    await query.edit_message_text(
+        "\n".join(lines),
+        parse_mode="HTML",
+        reply_markup=alert_card_keyboard(position, enabled),
+    )
