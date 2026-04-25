@@ -401,3 +401,19 @@ async def _handle_unsub(query, user, context, data: str) -> None:
     await query.edit_message_text(
         f"✅ Alert #{position} removed. You have {remaining} alert(s) left."
     )
+
+
+async def _handle_del(query, user, context, data: str) -> None:
+    """Delete a single alert from a /mysubs card. Edits the card in place."""
+    try:
+        position = int(data.split(":", 1)[1])
+    except ValueError:
+        log.warning(f"Bad del callback: {data}")
+        return
+
+    db_user = db.get_or_create_user(user.id, user.username or "")
+    ok = db.delete_user_alert(db_user["id"], position)
+    if not ok:
+        await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
+        return
+    await query.edit_message_text(f"🗑 Alert #{position} removed.")
