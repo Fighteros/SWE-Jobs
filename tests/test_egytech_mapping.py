@@ -65,3 +65,38 @@ class TestParseRoleQuery:
     def test_automation_resolves_to_testing(self):
         # 'automation' is ambiguous (QA vs AI); we resolve to QA/testing.
         assert parse_role_query("automation") == "testing"
+
+    def test_all_alias_targets_are_valid_egytech_titles(self):
+        """Every value in _ROLE_ALIASES must be a real egytech title."""
+        from core.egytech_mapping import _ROLE_ALIASES
+        for alias, title in _ROLE_ALIASES.items():
+            assert title in EGYTECH_TITLES, f"{alias!r} -> {title!r} not in EGYTECH_TITLES"
+
+    def test_role_aliases_has_no_duplicate_keys(self):
+        """Catch duplicate dict keys (which Python silently overwrites) by parsing the source."""
+        import ast
+        from pathlib import Path
+        import core.egytech_mapping as _mod
+
+        src = Path(_mod.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+
+        for node in ast.walk(tree):
+            target_name = None
+            value = None
+            if isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Name) and t.id == "_ROLE_ALIASES":
+                        target_name = t.id
+                        value = node.value
+                        break
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and node.target.id == "_ROLE_ALIASES":
+                    target_name = node.target.id
+                    value = node.value
+            if target_name == "_ROLE_ALIASES" and isinstance(value, ast.Dict):
+                keys = [k.value for k in value.keys if isinstance(k, ast.Constant)]
+                duplicates = [k for k in keys if keys.count(k) > 1]
+                assert not duplicates, f"Duplicate keys in _ROLE_ALIASES: {sorted(set(duplicates))}"
+                return
+        raise AssertionError("_ROLE_ALIASES not found in core/egytech_mapping.py")
