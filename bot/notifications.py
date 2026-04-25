@@ -18,25 +18,24 @@ log = logging.getLogger(__name__)
 MAX_DMS_PER_USER_PER_HOUR = 20
 
 
-def _job_matches_subscription(job: Job, subs: dict) -> bool:
-    """Check if a job matches a user's subscription filters."""
-    if not subs:
+def _job_matches_alert(job: Job, alert: dict) -> bool:
+    """Check if a job matches a single user alert (filter dict)."""
+    if not alert:
         return False
 
     # Check topics
-    sub_topics = set(subs.get("topics", []))
+    sub_topics = set(alert.get("topics", []))
     if sub_topics and not sub_topics.intersection(set(job.topics)):
         return False
 
     # Check seniority
-    sub_seniority = subs.get("seniority", [])
+    sub_seniority = alert.get("seniority", [])
     if sub_seniority and job.seniority not in sub_seniority:
         return False
 
     # Check sources — match against source key and original_source (for aggregators like JSearch)
-    sub_sources = set(subs.get("sources", []))
+    sub_sources = set(alert.get("sources", []))
     if sub_sources:
-        # Map display names back to source keys for aggregated sources
         _DISPLAY_TO_KEY = {
             "LinkedIn": "linkedin", "Indeed": "indeed",
             "Glassdoor": "glassdoor", "ZipRecruiter": "ziprecruiter",
@@ -48,7 +47,7 @@ def _job_matches_subscription(job: Job, subs: dict) -> bool:
             return False
 
     # Check locations — "remote" matches is_remote, others match country code
-    sub_locations = subs.get("locations", [])
+    sub_locations = alert.get("locations", [])
     if sub_locations:
         matched = False
         for loc in sub_locations:
@@ -62,14 +61,14 @@ def _job_matches_subscription(job: Job, subs: dict) -> bool:
             return False
 
     # Check keywords
-    sub_keywords = subs.get("keywords", [])
+    sub_keywords = alert.get("keywords", [])
     if sub_keywords:
         title_lower = job.title.lower()
         if not any(kw.lower() in title_lower for kw in sub_keywords):
             return False
 
     # Check min salary
-    min_salary = subs.get("min_salary")
+    min_salary = alert.get("min_salary")
     if min_salary and job.salary_max and job.salary_max < min_salary:
         return False
 
