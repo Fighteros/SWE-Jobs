@@ -6,13 +6,15 @@ Caches successful and 404 responses for 24h. Network errors are not cached.
 
 import logging
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlencode
 
 import requests
 
 from core.egytech_mapping import SENIORITY_TO_LEVEL, TOPIC_TO_TITLE
-from core.models import Job
+
+if TYPE_CHECKING:
+    from core.models import Job
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +82,7 @@ def _round_thousands(n: int) -> str:
     return f"{int(round(n / 1000))}k"
 
 
-def market_salary_for_job(job: Job) -> Optional[str]:
+def market_salary_for_job(job: "Job") -> Optional[str]:
     """
     Return a human-readable EGP/mo p20–p75 range for an Egypt-based job, or None.
     Uses the job's primary topic + seniority to look up egytech stats.
@@ -107,7 +109,7 @@ def market_salary_for_job(job: Job) -> Optional[str]:
     stats = data["stats"]
     p20 = stats.get("p20Compensation")
     p75 = stats.get("p75Compensation")
-    if not p20 or not p75:
+    if p20 is None or p75 is None:
         return None
 
     return f"EGP {_round_thousands(p20)}–{_round_thousands(p75)}/mo"
