@@ -63,3 +63,38 @@ class TestCreateUserAlert:
             assert params[5] == ["linkedin"]
             assert params[6] == ["python"]
             assert params[7] == 100000
+
+
+# ---------------------------------------------------------------------------
+# get_user_alerts / get_user_alert
+# ---------------------------------------------------------------------------
+
+class TestGetUserAlerts:
+    def test_returns_list_ordered_by_position(self):
+        from core.db import get_user_alerts
+        rows = [
+            {"id": 1, "user_id": 7, "position": 1, "topics": ["backend"]},
+            {"id": 2, "user_id": 7, "position": 2, "topics": ["devops"]},
+        ]
+        with patch("core.db._fetchall", return_value=rows) as mock_all:
+            result = get_user_alerts(user_id=7)
+            assert result == rows
+            sql = mock_all.call_args[0][0]
+            assert "ORDER BY position" in sql
+
+    def test_empty_when_user_has_no_alerts(self):
+        from core.db import get_user_alerts
+        with patch("core.db._fetchall", return_value=[]):
+            assert get_user_alerts(user_id=99) == []
+
+
+class TestGetUserAlert:
+    def test_returns_single_alert(self):
+        from core.db import get_user_alert
+        with patch("core.db._fetchone", return_value={"id": 1, "position": 1}):
+            assert get_user_alert(user_id=7, position=1) == {"id": 1, "position": 1}
+
+    def test_returns_none_when_missing(self):
+        from core.db import get_user_alert
+        with patch("core.db._fetchone", return_value=None):
+            assert get_user_alert(user_id=7, position=99) is None

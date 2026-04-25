@@ -545,6 +545,22 @@ def create_user_alert(user_id: int, alert: dict) -> int:
     return new_row["id"]
 
 
+def get_user_alerts(user_id: int) -> list[dict]:
+    """Return all alerts for a user, ordered by position ascending."""
+    return _fetchall(
+        "SELECT * FROM user_alerts WHERE user_id = %s ORDER BY position ASC",
+        (user_id,),
+    )
+
+
+def get_user_alert(user_id: int, position: int) -> Optional[dict]:
+    """Return the alert at the given 1-based position, or None."""
+    return _fetchone(
+        "SELECT * FROM user_alerts WHERE user_id = %s AND position = %s",
+        (user_id, position),
+    )
+
+
 # =============================================================================
 # User Saved Jobs
 # =============================================================================
