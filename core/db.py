@@ -601,6 +601,30 @@ def set_alert_dm_enabled(user_id: int, position: int, enabled: bool) -> bool:
     return row is not None
 
 
+def delete_user_alert(user_id: int, position: int) -> bool:
+    """
+    Delete one alert and re-pack any higher positions in the same transaction
+    so positions stay contiguous. Returns True if a row was deleted.
+    """
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "DELETE FROM user_alerts WHERE user_id = %s AND position = %s",
+                (user_id, position),
+            )
+            if cur.rowcount == 0:
+                return False
+            cur.execute(
+                """
+                UPDATE user_alerts
+                SET position = position - 1
+                WHERE user_id = %s AND position > %s
+                """,
+                (user_id, position),
+            )
+    return True
+
+
 # =============================================================================
 # User Saved Jobs
 # =============================================================================

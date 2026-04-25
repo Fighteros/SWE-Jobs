@@ -155,3 +155,84 @@ class TestSetAlertDmEnabled:
         from core.db import set_alert_dm_enabled
         with patch("core.db._execute", return_value=None):
             assert set_alert_dm_enabled(user_id=7, position=99, enabled=True) is False
+
+
+# ---------------------------------------------------------------------------
+# delete_user_alert (with position re-pack)
+# ---------------------------------------------------------------------------
+
+class TestDeleteUserAlert:
+    def test_deletes_and_repacks_higher_positions(self):
+        """Deleting alert #2 of 3 must shift #3 → #2 in the same transaction."""
+        from core.db import delete_user_alert
+
+        # Mock the connection context-manager + cursor so we can observe the
+        # ordered statements executed in one TX.
+        executed = []
+
+        class FakeCursor:
+            def __init__(self):
+                self.rowcount = 0
+                self.description = None
+
+            def execute(self, sql, params=()):
+                executed.append((sql.strip().split()[0].upper(), params))
+                # Pretend the DELETE matched one row
+                if sql.strip().upper().startswith("DELETE"):
+                    self.rowcount = 1
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        class FakeConn:
+            def cursor(self, cursor_factory=None):
+                return FakeCursor()
+
+            def commit(self): pass
+            def rollback(self): pass
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_conn():
+            yield FakeConn()
+
+        with patch("core.db._get_conn", fake_conn):
+            ok = delete_user_alert(user_id=7, position=2)
+
+        assert ok is True
+        # First op must be DELETE, second must be UPDATE (re-pack)
+        assert executed[0][0] == "DELETE"
+        assert executed[1][0] == "UPDATE"
+        # The UPDATE must scope to the same user and positions > 2
+        assert executed[1][1] == (7, 2)
+
+    def test_returns_false_when_alert_missing(self):
+        from core.db import delete_user_alert
+
+        class FakeCursor:
+            def __init__(self):
+                self.rowcount = 0
+                self.description = None
+            def execute(self, sql, params=()):
+                pass
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+
+        class FakeConn:
+            def cursor(self, cursor_factory=None):
+                return FakeCursor()
+            def commit(self): pass
+            def rollback(self): pass
+
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_conn():
+            yield FakeConn()
+
+        with patch("core.db._get_conn", fake_conn):
+            assert delete_user_alert(user_id=7, position=99) is False
