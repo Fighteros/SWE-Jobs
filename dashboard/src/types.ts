@@ -16,6 +16,7 @@ export interface Job {
   country: string;
   tags: string[];
   topics: string[];
+  market_salary: string | null;
   posted_at: string | null;
   created_at: string;
 }
@@ -38,21 +39,24 @@ export interface StatsSummary {
 }
 
 export interface SalaryStats {
-  overall: {
+  currency: string;
+  period: string;
+  source: string;
+  stats: {
     sample_size: number;
-    avg_min: number;
-    avg_max: number;
-    lowest: number;
-    highest: number;
-    median_min: number;
+    median: number | null;
+    p20: number | null;
+    p75: number | null;
+    p90: number | null;
+  } | null;
+  buckets: { label: string; count: number }[];
+  filters: {
+    role: string | null;
+    seniority: string | null;
+    yoe_from: number | null;
+    yoe_to: number | null;
   };
-  by_seniority: {
-    seniority: string;
-    count: number;
-    avg_min: number;
-    avg_max: number;
-  }[];
-  filters: { role: string | null; country: string | null; seniority: string | null };
+  matched: boolean;
 }
 
 export interface TrendItem {

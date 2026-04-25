@@ -28,6 +28,7 @@ export const api = {
   getStatsSummary: () =>
     fetchApi<StatsSummary>('/api/stats/summary'),
 
+  // Params: role (string), seniority (string), yoe_from (string), yoe_to (string)
   getSalaryStats: (params: Record<string, string>) =>
     fetchApi<SalaryStats>('/api/stats/salary', params),
 
