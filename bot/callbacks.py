@@ -268,32 +268,47 @@ async def _handle_sub_source(query, user, context, data: str) -> None:
 
 
 async def _handle_sub_source_done(query, user, context) -> None:
-    """Source selection done, save subscription."""
+    """Source selection done — save the alert (create or edit)."""
     topics = list(context.user_data.get("sub_topics", set()))
     seniority = list(context.user_data.get("sub_seniority", set()))
     locations = list(context.user_data.get("sub_locations", set()))
     sources = list(context.user_data.get("sub_sources", set()))
 
-    subscriptions = {"topics": topics}
-    if seniority:
-        subscriptions["seniority"] = seniority
-    if locations:
-        subscriptions["locations"] = locations
-    if sources:
-        subscriptions["sources"] = sources
+    alert_payload = {
+        "topics": topics,
+        "seniority": seniority,
+        "locations": locations,
+        "sources": sources,
+        "keywords": list(context.user_data.get("sub_keywords", [])),
+        "min_salary": context.user_data.get("sub_min_salary"),
+    }
 
     db_user = db.get_or_create_user(user.id, user.username or "")
-    db.update_user_subscriptions(user.id, subscriptions)
+    edit_position = context.user_data.pop("edit_position", None)
+
+    if edit_position is not None:
+        ok = db.update_user_alert(db_user["id"], edit_position, alert_payload)
+        if ok:
+            header = f"✅ Alert #{edit_position} updated."
+        else:
+            header = f"⚠️ Alert #{edit_position} no longer exists."
+    else:
+        new_id = db.create_user_alert(db_user["id"], alert_payload)
+        # Look up its position to show in the confirmation
+        alerts = db.get_user_alerts(db_user["id"])
+        position = next((a["position"] for a in alerts if a["id"] == new_id), len(alerts))
+        header = f"✅ Alert #{position} created. You'll receive DM alerts for matching jobs."
 
     summary = _format_sub_summary(topics, seniority, locations, sources)
-
-    await query.edit_message_text(f"✅ Subscribed!\n\n{summary}\n\nYou'll receive DM alerts for matching jobs.")
+    await query.edit_message_text(f"{header}\n\n{summary}")
 
     # Clean up temp data
     context.user_data.pop("sub_topics", None)
     context.user_data.pop("sub_seniority", None)
     context.user_data.pop("sub_locations", None)
     context.user_data.pop("sub_sources", None)
+    context.user_data.pop("sub_keywords", None)
+    context.user_data.pop("sub_min_salary", None)
 
 
 def _format_sub_summary(topics, seniority, locations, sources) -> str:
