@@ -91,10 +91,22 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show a chooser of alerts to remove (or 'remove all')."""
     user = update.effective_user
     db_user = db.get_or_create_user(user.id, user.username or "")
-    db.update_user_subscriptions(user.id, {})
-    await update.message.reply_text("✅ All subscriptions removed.")
+    alerts = db.get_user_alerts(db_user["id"])
+
+    if not alerts:
+        await update.message.reply_text(
+            "You have no active alerts. Use /subscribe to create one."
+        )
+        return
+
+    from bot.keyboards import alerts_unsub_keyboard
+    await update.message.reply_text(
+        "Which alert do you want to remove?",
+        reply_markup=alerts_unsub_keyboard(alerts),
+    )
 
 
 async def cmd_mysubs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
