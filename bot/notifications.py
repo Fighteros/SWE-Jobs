@@ -25,8 +25,10 @@ def _job_matches_alert(job: Job, alert: dict) -> bool:
 
     # Check topics
     sub_topics = set(alert.get("topics", []))
-    if sub_topics and not sub_topics.intersection(set(job.topics)):
-        return False
+    # 'general' is a wildcard for all topics. If selected, skip topic intersection check.
+    if sub_topics and "general" not in sub_topics:
+        if not sub_topics.intersection(set(job.topics)):
+            return False
 
     # Check seniority
     sub_seniority = alert.get("seniority", [])
@@ -118,57 +120,62 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
     for user_row in users:
         telegram_id = user_row["telegram_id"]
         user_id = user_row["id"]
-        alerts = db.get_user_alerts(user_id)
-        if not alerts:
-            continue
-        blacklist = db.get_blacklist(user_id)
-        dm_count = 0
-
-        for job, db_id in jobs:
-            if dm_count >= MAX_DMS_PER_USER_PER_HOUR:
-                log.info(f"Rate limit hit for user {telegram_id}")
-                break
-
-            matched = None
-            for alert in alerts:
-                if not alert.get("dm_enabled", True):
-                    continue
-                if _job_matches_alert(job, alert):
-                    matched = alert
-                    break  # first-match wins
-
-            if matched is None:
+        
+        try:
+            alerts = db.get_user_alerts(user_id)
+            if not alerts:
                 continue
-            if _job_blocked_by_blacklist(job, blacklist):
-                continue
+            blacklist = db.get_blacklist(user_id)
+            dm_count = 0
 
-            try:
-                msg = format_job_message(job)
-                await bot.send_message(
-                    chat_id=telegram_id,
-                    text=f"🔔 New matching job (Alert #{matched['position']}):\n\n{msg}",
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                    reply_markup=job_buttons(db_id),
-                )
-                dm_count += 1
-                total_sent += 1
-            except TelegramError as e:
-                err = str(e).lower()
-                if any(phrase in err for phrase in (
-                    "bot was blocked", "user not found",
-                    "chat not found", "forbidden",
-                    "bot can't initiate conversation",
-                    "have no rights to send a message",
-                )):
-                    db._execute(
-                        "UPDATE users SET notify_dm = FALSE WHERE telegram_id = %s",
-                        (telegram_id,),
-                    )
-                    log.info(f"Disabled DMs for user {telegram_id}: {e}")
+            for job, db_id in jobs:
+                if dm_count >= MAX_DMS_PER_USER_PER_HOUR:
+                    log.info(f"Rate limit hit for user {telegram_id}")
                     break
-                else:
-                    log.warning(f"DM failed for {telegram_id}: {e}")
+
+                matched = None
+                for alert in alerts:
+                    if not alert.get("dm_enabled", True):
+                        continue
+                    if _job_matches_alert(job, alert):
+                        matched = alert
+                        break  # first-match wins
+
+                if matched is None:
+                    continue
+                if _job_blocked_by_blacklist(job, blacklist):
+                    continue
+
+                try:
+                    msg = format_job_message(job)
+                    await bot.send_message(
+                        chat_id=telegram_id,
+                        text=f"🔔 New matching job (Alert #{matched['position']}):\n\n{msg}",
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=job_buttons(db_id),
+                    )
+                    dm_count += 1
+                    total_sent += 1
+                except TelegramError as e:
+                    err = str(e).lower()
+                    if any(phrase in err for phrase in (
+                        "bot was blocked", "user not found",
+                        "chat not found", "forbidden",
+                        "bot can't initiate conversation",
+                        "have no rights to send a message",
+                    )):
+                        db._execute(
+                            "UPDATE users SET notify_dm = FALSE WHERE telegram_id = %s",
+                            (telegram_id,),
+                        )
+                        log.info(f"Disabled DMs for user {telegram_id}: {e}")
+                        break
+                    else:
+                        log.warning(f"DM failed for {telegram_id}: {e}")
+        except Exception as e:
+            log.error(f"Failed to process alerts for user {telegram_id}: {e}")
+            continue
 
     log.info(f"📬 Sent {total_sent} DM alerts across {len(users)} subscribers")
     return total_sent

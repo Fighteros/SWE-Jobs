@@ -27,46 +27,63 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     data = query.data
     user = query.from_user
 
-    if data.startswith("save:"):
-        await _handle_save(query, user, data)
-    elif data.startswith("applied:"):
-        await _handle_applied(query, user, data)
-    elif data.startswith("share:"):
-        await _handle_share(query, user, data)
-    elif data.startswith("similar:"):
-        await _handle_similar(query, user, context.bot, data)
-    elif data.startswith("not_relevant:"):
-        await _handle_not_relevant(query, user, data)
-    elif data.startswith("sub_topic:"):
-        await _handle_sub_topic(query, user, context, data)
-    elif data == "sub_done":
-        await _handle_sub_done(query, user, context)
-    elif data.startswith("sub_seniority:"):
-        await _handle_sub_seniority(query, user, context, data)
-    elif data == "sub_seniority_done":
-        await _handle_sub_seniority_done(query, user, context)
-    elif data.startswith("sub_location:"):
-        await _handle_sub_location(query, user, context, data)
-    elif data == "sub_location_done":
-        await _handle_sub_location_done(query, user, context)
-    elif data.startswith("sub_source:"):
-        await _handle_sub_source(query, user, context, data)
-    elif data == "sub_source_done":
-        await _handle_sub_source_done(query, user, context)
-    elif data.startswith("saved_page:"):
-        await _handle_saved_page(query, user, data)
-    elif data.startswith("msg_read:"):
-        await _handle_msg_read(query, user, data)
-    elif data.startswith("unsub:"):
-        await _handle_unsub(query, user, context, data)
-    elif data.startswith("del:"):
-        await _handle_del(query, user, context, data)
-    elif data.startswith("dm:"):
-        await _handle_dm(query, user, context, data)
-    elif data.startswith("edit:"):
-        await _handle_edit(query, user, context, data)
-    else:
-        log.warning(f"Unknown callback data: {data}")
+    try:
+        if data.startswith("save:"):
+            await _handle_save(query, user, data)
+        elif data.startswith("applied:"):
+            await _handle_applied(query, user, data)
+        elif data.startswith("share:"):
+            await _handle_share(query, user, data)
+        elif data.startswith("similar:"):
+            await _handle_similar(query, user, context.bot, data)
+        elif data.startswith("not_relevant:"):
+            await _handle_not_relevant(query, user, data)
+        elif data.startswith("sub_topic:"):
+            await _handle_sub_topic(query, user, context, data)
+        elif data == "sub_done":
+            await _handle_sub_done(query, user, context)
+        elif data.startswith("sub_seniority:"):
+            await _handle_sub_seniority(query, user, context, data)
+        elif data == "sub_seniority_done":
+            await _handle_sub_seniority_done(query, user, context)
+        elif data.startswith("sub_location:"):
+            await _handle_sub_location(query, user, context, data)
+        elif data == "sub_location_done":
+            await _handle_sub_location_done(query, user, context)
+        elif data.startswith("sub_source:"):
+            await _handle_sub_source(query, user, context, data)
+        elif data == "sub_source_done":
+            await _handle_sub_source_done(query, user, context)
+        elif data.startswith("saved_page:"):
+            await _handle_saved_page(query, user, data)
+        elif data.startswith("msg_read:"):
+            await _handle_msg_read(query, user, data)
+        elif data.startswith("unsub:"):
+            await _handle_unsub(query, user, context, data)
+        elif data.startswith("del:"):
+            await _handle_del(query, user, context, data)
+        elif data.startswith("dm:"):
+            await _handle_dm(query, user, context, data)
+        elif data.startswith("edit:"):
+            await _handle_edit(query, user, context, data)
+        else:
+            log.warning(f"Unknown callback data: {data}")
+    except Exception as e:
+        log.exception(f"Error handling callback {data}: {e}")
+        error_msg = f"❌ Something went wrong: {e}"
+        # Truncate if too long for Telegram
+        if len(error_msg) > 200:
+            error_msg = error_msg[:197] + "..."
+        try:
+            await query.edit_message_text(
+                f"{error_msg}\n\nPlease try again or use /contact if this persists."
+            )
+        except Exception:
+            # Fallback if message edit fails (e.g. message too old)
+            try:
+                await context.bot.send_message(user.id, error_msg)
+            except Exception:
+                pass
 
 
 async def _handle_save(query, user, data: str) -> None:

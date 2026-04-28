@@ -82,7 +82,24 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
+    # Ensure user exists and has DMs enabled (recovery if they were once blocked)
+    db_user = db.get_or_create_user(update.effective_user.id, update.effective_user.username or "")
+    if not db_user.get("notify_dm", True):
+        db._execute("UPDATE users SET notify_dm = TRUE WHERE id = %s", (db_user["id"],))
+
+    # Safety check: if they have too many alerts, block creation
+    try:
+        alerts = db.get_user_alerts(db_user["id"])
+        if len(alerts) >= 5:
+            await update.message.reply_text(
+                "⚠️ You already have 5 alerts. Use /unsubscribe or /mysubs to remove some first."
+            )
+            return
+    except Exception as e:
+        log.error(f"Failed to fetch alerts for check: {e}")
+
     context.user_data["sub_topics"] = set()
+    from bot.keyboards import topic_selection_keyboard
     await update.message.reply_text(
         "Step 1/4: Select topics you're interested in:\n"
         "(tap to toggle, then press Done)",
@@ -110,9 +127,20 @@ async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def cmd_mysubs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List current user alerts with Edit/Delete/DM toggle buttons."""
     user = update.effective_user
     db_user = db.get_or_create_user(user.id, user.username or "")
-    alerts = db.get_user_alerts(db_user["id"])
+    
+    try:
+        alerts = db.get_user_alerts(db_user["id"])
+    except Exception as e:
+        log.exception(f"Error in /mysubs: {e}")
+        await update.message.reply_text(
+            "❌ Failed to fetch your alerts. Is the database up to date?\n\n"
+            f"<i>Error: {e}</i>",
+            parse_mode="HTML"
+        )
+        return
 
     if not alerts:
         await update.message.reply_text(
