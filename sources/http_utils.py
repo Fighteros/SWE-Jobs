@@ -28,7 +28,11 @@ def get_json(url: str, params: dict = None, headers: dict = None,
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as e:
-        log.warning(f"GET {url} failed: {e}")
+        status = e.response.status_code if e.response is not None else None
+        if status in (404, 429):
+            log.debug(f"GET {url} failed ({status}): {e}")
+        else:
+            log.warning(f"GET {url} failed: {e}")
         return None
     except ValueError as e:
         log.warning(f"JSON parse error for {url}: {e}")
@@ -43,7 +47,11 @@ def post_json(url: str, payload: dict = None, headers: dict = None,
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as e:
-        log.warning(f"POST {url} failed: {e}")
+        status = e.response.status_code if e.response is not None else None
+        if status in (404, 429):
+            log.debug(f"POST {url} failed ({status}): {e}")
+        else:
+            log.warning(f"POST {url} failed: {e}")
         return None
     except ValueError as e:
         log.warning(f"JSON parse error for {url}: {e}")
@@ -58,5 +66,9 @@ def get_text(url: str, params: dict = None, headers: dict = None,
         resp.raise_for_status()
         return resp.text
     except requests.RequestException as e:
-        log.warning(f"GET text {url} failed: {e}")
+        status = e.response.status_code if e.response is not None else None
+        if status in (404, 429):
+            log.debug(f"GET text {url} failed ({status}): {e}")
+        else:
+            log.warning(f"GET text {url} failed: {e}")
         return None

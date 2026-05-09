@@ -13,7 +13,7 @@ URL = "https://jsearch.p.rapidapi.com/search"
 
 # Delay (seconds) between consecutive JSearch API calls to avoid 429s.
 # Free RapidAPI tier is very limited — space requests out generously.
-REQUEST_DELAY = 5.0
+REQUEST_DELAY = 10.0
 
 # Sort by date to get newest first. No date filter — dedup handles freshness.
 _BASE_REMOTE = {"remote_jobs_only": "true", "num_pages": "1"}

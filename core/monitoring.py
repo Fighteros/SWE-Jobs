@@ -63,8 +63,9 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
             )
             if duration and duration["seconds"] > 300:
                 msg = f"⏰ <b>ALERT: Slow run</b>\nRun took {int(duration['seconds'])}s (threshold: 300s)"
-                await send_admin_alert(bot, msg)
-                alerts.append(msg)
+                # await send_admin_alert(bot, msg)
+                # alerts.append(msg)
+                log.info(msg)
 
         # Alert: Telegram send success rate below 80%
         # jobs_sent     = jobs delivered to at least one topic

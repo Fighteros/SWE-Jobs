@@ -12,7 +12,7 @@ BASE = "https://boards-api.greenhouse.io/v1/boards/{}/jobs"
 BOARDS = [
     "cloudflare", "airbnb", "stripe",
     "twilio", "datadog", "gitlab", "discord",
-    "coinbase", "brex", "airtable", "vercel",
+    "brex", "airtable", "vercel",
     "gusto", "duolingo", "hubspot",
     "instacart", "coupang", "reddit",
 ]

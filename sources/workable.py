@@ -1,6 +1,7 @@
 """Workable Widget API — fetches from curated tech company boards."""
 
 import logging
+import time
 from core.models import Job
 from sources.http_utils import get_json
 
@@ -19,7 +20,9 @@ COMPANIES = [
 def fetch_workable() -> list[Job]:
     """Fetch jobs from Workable company boards."""
     jobs = []
-    for company in COMPANIES:
+    for i, company in enumerate(COMPANIES):
+        if i > 0:
+            time.sleep(2)
         url = BASE.format(company)
         data = get_json(url)
         if not data or "jobs" not in data:

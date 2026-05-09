@@ -56,7 +56,7 @@ def fetch_naukrigulf() -> list[Job]:
                             jobs.append(job)
 
                 except Exception as e:
-                    log.warning(f"NaukriGulf: error on search '{keyword}': {e}")
+                    log.debug(f"NaukriGulf: error on search '{keyword}': {e}")
                     continue
 
     except Exception as e:

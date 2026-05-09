@@ -53,7 +53,7 @@ def fetch_dubizzle() -> list[Job]:
                     
                     # Check if we are still blocked
                     if "Incapsula" in page.content():
-                        log.warning(f"Dubizzle: still blocked by Incapsula for '{params['keyword']}'")
+                        log.debug(f"Dubizzle: still blocked by Incapsula for '{params['keyword']}'")
                         continue
 
                     html = page.content()
@@ -64,7 +64,7 @@ def fetch_dubizzle() -> list[Job]:
                             jobs.append(job)
 
                 except Exception as e:
-                    log.warning(f"Dubizzle: error on search '{params['keyword']}': {e}")
+                    log.debug(f"Dubizzle: error on search '{params['keyword']}': {e}")
                     continue
     except Exception as e:
         log.error(f"Dubizzle: browser failure: {e}")

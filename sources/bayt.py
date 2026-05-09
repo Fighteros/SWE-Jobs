@@ -57,7 +57,7 @@ def fetch_bayt() -> list[Job]:
                             jobs.append(job)
 
                 except Exception as e:
-                    log.warning(f"Bayt: error on search '{keyword}': {e}")
+                    log.debug(f"Bayt: error on search '{keyword}': {e}")
                     continue
 
     except Exception as e:

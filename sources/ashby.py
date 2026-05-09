@@ -10,7 +10,7 @@ BASE = "https://api.ashbyhq.com/posting-api/job-board/{}"
 
 # Curated tech company board slugs (verified active on Ashby)
 BOARDS = [
-    "ramp", "linear", "retool",
+    "ramp", "linear",
     "replit", "render", "supabase", "clerk",
     "resend", "neon", "railway",
 ]

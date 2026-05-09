@@ -48,7 +48,7 @@ def fetch_linkedin_posts() -> list[Job]:
     cookies_file = os.getenv("LINKEDIN_COOKIES_FILE", "")
 
     if not cookies_file or not os.path.isfile(cookies_file):
-        log.warning(
+        log.info(
             "LinkedIn Posts: LINKEDIN_COOKIES_FILE not set or missing — skipping. "
             "Export your LinkedIn cookies to a JSON file and set the env var."
         )
