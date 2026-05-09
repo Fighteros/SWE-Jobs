@@ -124,27 +124,34 @@ def _set_auth_token(page, token: str):
 def _scrape_search(page, query: str) -> list[Job]:
     """Run a single search query and extract job-like tweets."""
     jobs = []
-    params = f"?q={query}&src=typed_query&f=live"
-    url = f"{SEARCH_BASE}{params}"
-    page.goto(url, wait_until="domcontentloaded")
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://x.com/search?q={encoded_query}&src=typed_query&f=live"
+    
+    log.info(f"X: Navigating to {url}")
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+    except Exception as e:
+        log.warning(f"X: Navigation timeout or error: {e}")
 
-    # Give the SPA time to hydrate after domcontentloaded
-    time.sleep(3)
+    # Give the SPA extra time to load results regardless of networkidle
+    page.wait_for_timeout(10000)
 
-    # Check if we got redirected to login
+    # Check if we got redirected to explore/login
     current_url = page.url
+    if "/explore" in current_url:
+        log.warning(f"X: redirected to explore — search failed for '{query}'. Auth might be required.")
+        return jobs
     if "/login" in current_url or "/i/flow/login" in current_url:
-        log.warning(f"X: redirected to login — auth_token may be expired. URL: {current_url}")
+        log.warning(f"X: redirected to login — auth_token may be expired.")
         return jobs
 
-    # Wait for tweets to load — try multiple selectors
-    tweet_selector = 'article[data-testid="tweet"], article[role="article"]'
+    # Wait for tweets to load
+    tweet_selector = 'article[data-testid="tweet"]'
     try:
         page.wait_for_selector(tweet_selector, timeout=15_000)
     except Exception:
-        # Log page title to diagnose what X is showing
-        title = page.title()
-        log.warning(f"X: no tweets for '{query}' — page title: '{title}', url: {page.url}")
+        log.warning(f"X: no tweets found for '{query}' (timeout)")
         return jobs
 
     # Scroll to load more tweets
@@ -184,11 +191,11 @@ def _parse_tweet(tweet) -> Job | None:
     job_signals = ["hiring", "looking for", "job opening", "open position",
                    "we're hiring", "we are hiring", "join our team",
                    "apply now", "job alert", "vacancy", "developer needed",
-                   "engineer needed"]
+                   "engineer needed", "career opportunity"]
     if not any(signal in text_lower for signal in job_signals):
         return None
 
-    # Extract title — first line or text before the first newline
+    # Extract title — try to find a job title in the first few lines
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     title = _extract_title(lines, text_lower)
     if not title:
@@ -200,17 +207,19 @@ def _parse_tweet(tweet) -> Job | None:
     if time_el:
         dt_attr = time_el.get_attribute("datetime")
         posted_at = _parse_date(dt_attr)
-    link_el = time_el.evaluate_handle(
-        "el => el.closest('a')"
-    ) if time_el else None
+    
+    # Try to find the tweet URL
     tweet_url = ""
-    if link_el:
-        href = link_el.get_attribute("href")
-        if href:
-            tweet_url = f"https://x.com{href}" if not href.startswith("http") else href
+    if time_el:
+        # Check if it has a parent anchor
+        link_el = time_el.query_selector("xpath=ancestor::a")
+        if link_el:
+            href = link_el.get_attribute("href")
+            if href:
+                tweet_url = f"https://x.com{href}" if not href.startswith("http") else href
 
     if not tweet_url:
-        # Fallback: find any link in the tweet
+        # Fallback: find any link in the tweet that looks like a status URL
         links = tweet.query_selector_all('a[href*="/status/"]')
         for link in links:
             href = link.get_attribute("href") or ""
@@ -218,18 +227,26 @@ def _parse_tweet(tweet) -> Job | None:
                 tweet_url = f"https://x.com{href}" if not href.startswith("http") else href
                 break
 
-    if not tweet_url:
-        return None
-
-    # Extract company from username/display name
+    # Extract company from the user display name
     name_el = tweet.query_selector('div[data-testid="User-Name"]')
     company = ""
     if name_el:
-        spans = name_el.query_selector_all("span")
-        for span in spans:
-            txt = span.inner_text().strip()
-            if txt and not txt.startswith("@") and txt != "·":
-                company = txt
+        # The display name is usually the first span inside a div
+        display_name_el = name_el.query_selector('span')
+        if display_name_el:
+            company = display_name_el.inner_text().strip()
+
+    # Try to refine company from text (e.g., "at Google", "at OpenAI")
+    company_patterns = [
+        r'(?:at|join|with)\s+([A-Z][a-zA-Z0-9\s&]{2,30})(?:\s|!|\.|\n|$)',
+    ]
+    for pattern in company_patterns:
+        match = re.search(pattern, text)
+        if match:
+            found_company = match.group(1).strip()
+            # If the display name is generic, use the one found in text
+            if len(found_company) > 3 and not any(w in found_company.lower() for w in ["hiring", "job", "alert", "tech"]):
+                company = found_company
                 break
 
     # Try to extract location from text
@@ -261,24 +278,60 @@ def _parse_tweet(tweet) -> Job | None:
 
 def _extract_title(lines: list[str], text_lower: str) -> str:
     """Try to extract a job title from tweet lines."""
-    # Common title patterns in job tweets
-    title_patterns = [
-        r'(?:hiring|looking for|seeking)\s*(?:a|an)?\s*(.+?)(?:\n|$|!|\.|,)',
-        r'(?:position|role|opening):\s*(.+?)(?:\n|$|!|\.|,)',
-        r'((?:senior|junior|mid|lead|staff|principal)?\s*(?:software|backend|frontend|full[- ]?stack|mobile|flutter|devops|cloud|data|ml|ai|qa|security|game|blockchain|web)\s*(?:engineer|developer|scientist|analyst|architect|tester))',
-    ]
-    for pattern in title_patterns:
-        match = re.search(pattern, text_lower)
-        if match:
-            title = match.group(1).strip().title()
-            if len(title) > 10:
-                return title[:120]
+    # Clean hashtags and mentions from lines
+    # Only remove hashtags/mentions if they are at the end or standalone
+    clean_lines = []
+    for l in lines:
+        # Remove standalone hashtags/mentions
+        l = re.sub(r'^[#@]\S+\s*', '', l)
+        l = re.sub(r'\s*[#@]\S+$', '', l)
+        l = l.strip()
+        if l:
+            clean_lines.append(l)
+    
+    if not clean_lines:
+        return ""
 
-    # Fallback: use first non-empty line that looks like a title
-    for line in lines[:3]:
-        line_clean = re.sub(r'[#@]\S+', '', line).strip()
-        if 10 < len(line_clean) < 120:
-            return line_clean
+    # Common title patterns
+    patterns = [
+        r'(?:hiring|looking for|seeking)\s*(?:a|an)?\s*([A-Z][^!\n\.,]{5,80})(?:\s+at|\s+for|\n|$|!|\.|,)',
+        r'(?:position|role|opening|needed):\s*([A-Z][^!\n\.,]{5,80})(?:\n|$|!|\.|,)',
+    ]
+    
+    # Try case-sensitive patterns first for better quality
+    for pattern in patterns:
+        match = re.search(pattern, " ".join(clean_lines))
+        if match:
+            return match.group(1).strip()
+
+    # Keywords that suggest a job title line
+    role_keywords = ["engineer", "developer", "architect", "scientist", "tester", "sre", "devops", "lead", "staff", "principal"]
+    
+    role_lines = []
+    for line in clean_lines:
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in role_keywords):
+            # Avoid long hyphenated slugs from URLs
+            if line.count('-') > 3 and len(line) > 30:
+                continue
+                
+            # Clean up prefixes
+            t = re.sub(r'^(?:new job alert|hiring|we are hiring|vacancy|needed|needed[:])[:\s]*', '', line, flags=re.IGNORECASE).strip()
+            t = re.sub(r'[!.,\s]+$', '', t)
+            
+            # Remove trailing hashtags again
+            t = re.sub(r'\s*#\S+$', '', t)
+            
+            if 5 < len(t) < 100:
+                role_lines.append(t)
+    
+    if role_lines:
+        return role_lines[0] # Return the first matching line
+
+    # Fallback
+    for line in clean_lines[:2]:
+        if 5 < len(line) < 80 and not any(w in line.lower() for w in ["job alert", "new job"]):
+            return line
 
     return ""
 

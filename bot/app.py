@@ -30,7 +30,7 @@ def _register_handlers(app: Application) -> None:
     """Register all command and callback handlers."""
     from bot.commands import (
         cmd_start, cmd_help, cmd_subscribe, cmd_unsubscribe,
-        cmd_mysubs, cmd_search, cmd_saved, cmd_stats, cmd_top,
+        cmd_mysubs, cmd_search, cmd_saved, cmd_stats, cmd_status, cmd_top,
         cmd_salary, cmd_applied, cmd_streak, cmd_blacklist,
         cmd_contact, cmd_messages, cmd_broadcast,
     )
@@ -45,6 +45,7 @@ def _register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("search", cmd_search))
     app.add_handler(CommandHandler("saved", cmd_saved))
     app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("top", cmd_top))
     app.add_handler(CommandHandler("salary", cmd_salary))
     app.add_handler(CommandHandler("applied", cmd_applied))

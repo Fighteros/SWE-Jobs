@@ -37,15 +37,21 @@ def fetch_gulftalent() -> list[Job]:
         with get_browser_page() as page:
             for keyword in SEARCHES:
                 try:
-                    kw = keyword.replace(" ", "+")
-                    url = f"{BASE_URL}/jobs/search?keywords={kw}&industry=information-technology"
-                    page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+                    kw = keyword.replace(" ", "%20")
+                    url = f"{BASE_URL}/jobs/search?keywords={kw}"
+                    log.info(f"GulfTalent: Navigating to {url}")
+                    
+                    try:
+                        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    except Exception as e:
+                        log.warning(f"GulfTalent: Navigation timeout for '{keyword}': {e}")
+                    
+                    page.wait_for_timeout(10000) # Extra wait for potential redirects or slow JS
 
-                    # Wait for job cards to appear
-                    page.wait_for_selector(
-                        "div.job-card, tr.listing, div.search-result",
-                        timeout=10_000,
-                    )
+                    # Check if we are at a listing page or redirected
+                    if "/jobs/search" not in page.url and "/jobs/view" not in page.url:
+                        log.warning(f"GulfTalent: redirected away from search page to {page.url}")
+                        continue
 
                     html = page.content()
                     parsed = _parse_search_html(html)

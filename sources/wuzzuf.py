@@ -40,13 +40,15 @@ def fetch_wuzzuf() -> list[Job]:
                 try:
                     query = params["q"].replace(" ", "+")
                     url = f"{BASE_URL}?q={query}&a={params['a']}"
-                    page.goto(url, wait_until="networkidle", timeout=20_000)
+                    
+                    # Relax wait condition
+                    page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    page.wait_for_timeout(5000)
 
-                    # Use stable selectors — Wuzzuf wraps each job in an
-                    # <a> that links to /jobs/p/…  Fall back to any h2 > a.
+                    # Use stable selectors
                     page.wait_for_selector(
                         "a[href*='/jobs/p/'], h2 a[href*='/jobs/']",
-                        timeout=10_000,
+                        timeout=15_000,
                     )
 
                     html = page.content()

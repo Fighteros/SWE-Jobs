@@ -293,20 +293,99 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                WHERE created_at > now() - make_interval(days := 7)
                GROUP BY source ORDER BY count DESC LIMIT 5"""
         )
+        
+        # New: Trending topics
+        topics = db._fetchall(
+            """SELECT unnest(topics) as topic, COUNT(*) as count FROM jobs
+               WHERE created_at > now() - make_interval(days := 7)
+               GROUP BY topic ORDER BY count DESC LIMIT 5"""
+        )
+        
+        # New: Global salary average
+        salary = db._fetchone(
+            """SELECT AVG(salary_min) as min, AVG(salary_max) as max 
+               FROM jobs WHERE salary_min IS NOT NULL 
+               AND created_at > now() - make_interval(days := 30)"""
+        )
     except Exception as e:
         await update.message.reply_text(f"Stats unavailable: {e}")
         return
 
     lines = [
         "📊 <b>Bot Statistics</b>\n",
-        f"Today: {today['count']} jobs",
-        f"This week: {week['count']} jobs",
-        f"All time: {total['count']} jobs",
-        "\n<b>Top sources (7 days):</b>",
+        f"Today: <b>{today['count']}</b> jobs",
+        f"This week: <b>{week['count']}</b> jobs",
+        f"All time: <b>{total['count']}</b> jobs",
     ]
-    for s in sources:
-        lines.append(f"  {s['source']}: {s['count']}")
+    
+    if salary and salary['min']:
+        lines.append(f"Avg Salary: <b>${int(salary['min']):,} - ${int(salary['max']):,}</b>/yr")
+        
+    lines.append("\n<b>🔥 Trending Topics (7 days):</b>")
+    for t in topics:
+        lines.append(f"  • {t['topic'].title()}: {t['count']} jobs")
 
+    lines.append("\n<b>🏢 Top Sources (7 days):</b>")
+    for s in sources:
+        lines.append(f"  • {s['source']}: {s['count']}")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show system health (source status)."""
+    try:
+        sources = db._fetchall(
+            "SELECT * FROM source_health ORDER BY source ASC"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"Status unavailable: {e}")
+        return
+
+    if not sources:
+        await update.message.reply_text("No status data available yet.")
+        return
+
+    lines = ["📡 <b>System Health Status</b>\n"]
+    
+    broken = []
+    warning = []
+    healthy = []
+
+    for s in sources:
+        is_open = s.get("circuit_open_until") and s["circuit_open_until"] > db.now() # assuming db has now() or using raw SQL comparison
+        # Better: use the existing is_source_circuit_open logic but we have the rows already
+        from datetime import datetime, timezone
+        is_circuit_open = False
+        if s.get("circuit_open_until"):
+            # Handle both string (from JSON/mock) and datetime objects
+            until = s["circuit_open_until"]
+            if isinstance(until, str):
+                from dateutil.parser import parse
+                until = parse(until)
+            
+            now = datetime.now(until.tzinfo if until.tzinfo else None)
+            is_circuit_open = until > now
+
+        status_emoji = "🟢"
+        if is_circuit_open:
+            status_emoji = "🔴"
+            broken.append(f"{status_emoji} <b>{s['source']}</b>: Broken (Circuit Open)")
+        elif s.get("consecutive_failures", 0) > 0:
+            status_emoji = "🟡"
+            warning.append(f"{status_emoji} <b>{s['source']}</b>: {s['consecutive_failures']} fails")
+        else:
+            healthy.append(f"{status_emoji} {s['source']}")
+
+    if broken:
+        lines.extend(broken)
+        lines.append("")
+    if warning:
+        lines.extend(warning)
+        lines.append("")
+    
+    lines.append(f"✅ {len(healthy)} sources are healthy.")
+    
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 

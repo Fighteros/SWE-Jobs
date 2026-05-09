@@ -140,8 +140,11 @@ class Job:
         now = datetime.now(timezone.utc)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            # Normalise to UTC so the diff is always correct
+            dt = dt.astimezone(timezone.utc)
         diff = now - dt
-        seconds = int(diff.total_seconds())
+        seconds = max(0, int(diff.total_seconds()))
         if seconds < 60:
             ago = "just now"
         elif seconds < 3600:

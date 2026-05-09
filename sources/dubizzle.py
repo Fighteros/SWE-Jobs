@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from core.models import Job
 from sources.http_utils import get_text
+from sources.playwright_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -33,34 +34,40 @@ REQUEST_DELAY = 3
 
 
 def fetch_dubizzle() -> list[Job]:
-    """Fetch jobs from Dubizzle."""
+    """Fetch jobs from Dubizzle using Playwright."""
     jobs = []
     seen_urls = set()
 
-    for i, params in enumerate(SEARCHES):
-        if i > 0:
-            time.sleep(REQUEST_DELAY)
+    try:
+        with get_browser_page() as page:
+            for params in SEARCHES:
+                try:
+                    keyword = params["keyword"].replace(" ", "+")
+                    url = f"{BASE_URL}?keyword={keyword}"
+                    
+                    # Try to look like a real user
+                    page.goto(url, wait_until="networkidle", timeout=30_000)
+                    
+                    # Extra wait for Imperva challenge
+                    page.wait_for_timeout(5000)
+                    
+                    # Check if we are still blocked
+                    if "Incapsula" in page.content():
+                        log.warning(f"Dubizzle: still blocked by Incapsula for '{params['keyword']}'")
+                        continue
 
-        keyword = params["keyword"].replace(" ", "+")
-        url = f"{BASE_URL}?keyword={keyword}"
+                    html = page.content()
+                    parsed = _parse_search_html(html)
+                    for job in parsed:
+                        if job.url not in seen_urls:
+                            seen_urls.add(job.url)
+                            jobs.append(job)
 
-        html = get_text(url, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        })
-
-        if not html:
-            log.warning(f"Dubizzle: no response for '{params['keyword']}'")
-            continue
-
-        parsed = _parse_search_html(html)
-        for job in parsed:
-            if job.url not in seen_urls:
-                seen_urls.add(job.url)
-                jobs.append(job)
+                except Exception as e:
+                    log.warning(f"Dubizzle: error on search '{params['keyword']}': {e}")
+                    continue
+    except Exception as e:
+        log.error(f"Dubizzle: browser failure: {e}")
 
     log.debug(f"Dubizzle: fetched {len(jobs)} jobs.")
     return jobs
