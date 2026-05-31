@@ -22,6 +22,7 @@ from core.config import (
     SUPABASE_DB_NAME,
     SUPABASE_DB_USER,
     SUPABASE_DB_PASSWORD,
+    SUPABASE_DB_SSLMODE,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ def _get_pool() -> SimpleConnectionPool:
             dbname=SUPABASE_DB_NAME,
             user=SUPABASE_DB_USER,
             password=SUPABASE_DB_PASSWORD,
-            sslmode="require",
+            sslmode=SUPABASE_DB_SSLMODE,
             options="-c search_path=public -c timezone=UTC",
         )
     return _pool

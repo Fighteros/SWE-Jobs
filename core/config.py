@@ -23,6 +23,10 @@ SUPABASE_DB_PORT: int = int(os.getenv("DB_PORT", "") or "6543")
 SUPABASE_DB_NAME: str = os.getenv("DB_NAME", "postgres")
 SUPABASE_DB_USER: str = os.getenv("DB_USER", "postgres")
 SUPABASE_DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+# sslmode: "prefer" works for both a no-SSL local container and an SSL managed
+# host (tries SSL, falls back). Set DB_SSLMODE=disable for the local container,
+# DB_SSLMODE=require for Supabase.
+SUPABASE_DB_SSLMODE: str = os.getenv("DB_SSLMODE", "prefer")
 
 # =============================================================================
 # Telegram

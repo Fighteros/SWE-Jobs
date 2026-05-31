@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 .claude/
 .superpowers/
+
+# Local DB-migration artifacts — data dumps & logs, never commit
+swejobs_data.sql
+supabase_schema.sql
+*.log
+
+# Database backups produced by scripts/backup_db.sh
+backups/
