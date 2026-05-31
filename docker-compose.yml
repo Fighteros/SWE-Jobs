@@ -9,11 +9,8 @@ services:
       POSTGRES_DB: ${DB_NAME:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      # localhost-only: lets psql/GUI tools and the app (run outside compose) reach it.
-      # Host port 15432 (kept well clear of 5432/5433/5444); the container still listens
-      # on 5432 internally, so the app connects to db:5432 over the compose network.
-      - "127.0.0.1:15432:5432"
+    # No ports published — only reachable by services in this compose network (db:5432).
+    # To run psql manually: docker compose exec -T db psql -U postgres -d postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-postgres}"]
       interval: 5s
