@@ -5,6 +5,8 @@ All run in the same asyncio event loop.
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
+
 import uvicorn
 
 from core.logging_config import setup_logging
@@ -13,8 +15,6 @@ from core.config import FETCH_INTERVAL_MINUTES
 
 setup_logging()
 log = logging.getLogger(__name__)
-
-app = create_app()
 
 _scheduler_task: asyncio.Task | None = None
 
@@ -26,7 +26,6 @@ async def _job_fetch_loop():
     interval = FETCH_INTERVAL_MINUTES * 60
     log.info(f"Job scheduler started — running every {FETCH_INTERVAL_MINUTES} min")
 
-    # Run immediately on first startup, then repeat
     while True:
         try:
             log.info("Scheduler: starting job fetch run…")
@@ -37,9 +36,9 @@ async def _job_fetch_loop():
         await asyncio.sleep(interval)
 
 
-@app.on_event("startup")
-async def startup():
-    """Start bot polling and the job scheduler alongside FastAPI."""
+@asynccontextmanager
+async def lifespan(app):
+    """Startup: launch bot polling + job scheduler. Shutdown: cancel both, close DB."""
     global _scheduler_task
 
     # Start Telegram bot polling
@@ -54,11 +53,9 @@ async def startup():
     _scheduler_task = asyncio.create_task(_job_fetch_loop())
     log.info("Job fetch scheduler started alongside FastAPI")
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown():
-    """Stop scheduler, bot, and close DB pool."""
-    # Cancel the scheduler
+    # Shutdown
     if _scheduler_task and not _scheduler_task.done():
         _scheduler_task.cancel()
         try:
@@ -67,20 +64,20 @@ async def shutdown():
             pass
         log.info("Job fetch scheduler stopped")
 
-    # Stop bot
     try:
         from bot.app import stop_polling
         await stop_polling()
     except Exception:
         pass
 
-    # Close DB pool
     try:
         from core.db import close_pool
         close_pool()
     except Exception:
         pass
 
+
+app = create_app(lifespan=lifespan)
 
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)

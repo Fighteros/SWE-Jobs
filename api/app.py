@@ -11,8 +11,8 @@ from slowapi.errors import RateLimitExceeded
 from api.middleware import limiter
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="SWE-Jobs API", version="2.0.0")
+def create_app(lifespan=None) -> FastAPI:
+    app = FastAPI(title="SWE-Jobs API", version="2.0.0", lifespan=lifespan)
 
     # Rate limiting
     app.state.limiter = limiter
