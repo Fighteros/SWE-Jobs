@@ -19,9 +19,9 @@ sudo usermod -aG docker $USER   # log out/in afterwards so `docker` works withou
 
 ## 2. Get the code
 ```bash
-git clone https://github.com/Fighteros/SWE-Jobs.git
-cd SWE-Jobs
-git checkout claude/migrate-supabase-to-postgres-container   # or main, once merged
+git clone https://github.com/Fighteros/SWE-Jobs.git && cd SWE-Jobs   # fresh server
+# or, if the repo is already on the server:   cd SWE-Jobs && git pull
+# Everything is on main — no branch checkout needed.
 ```
 
 ## 3. Create `.env`
