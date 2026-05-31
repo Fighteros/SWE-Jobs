@@ -9,33 +9,17 @@ jobs:
   archive:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: bot
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Archive old jobs via SSH
+        uses: appleboy/ssh-action@v1
         with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Archive old jobs
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          python -c "
-          from core import db
-
-          # Move jobs older than 7 days to archive
-          moved = db._execute('''
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            docker compose -f ${{ secrets.PROJECT_PATH }}/docker-compose.yml exec -T db psql -U postgres -d postgres -c "
               WITH moved AS (
                   DELETE FROM jobs
                   WHERE created_at < now() - interval '7 days'
@@ -44,14 +28,8 @@ jobs:
               )
               INSERT INTO jobs_archive
               SELECT * FROM moved
-              ON CONFLICT (unique_id) DO NOTHING
-          ''')
-          print('Archive complete')
+              ON CONFLICT (unique_id) DO NOTHING;
 
-          # Delete archived jobs older than 90 days
-          db._execute('''
               DELETE FROM jobs_archive
-              WHERE created_at < now() - interval '90 days'
-          ''')
-          print('Pruned old archive entries')
-          "
+              WHERE created_at < now() - interval '90 days';
+            "
