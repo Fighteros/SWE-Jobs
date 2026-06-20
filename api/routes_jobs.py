@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Query, Request
 from typing import Optional
 from api.middleware import limiter
-from core import db
+from core import db_async as adb
 
 router = APIRouter()
 
@@ -46,14 +46,14 @@ async def search_jobs(
     offset = (page - 1) * per_page
 
     # Count total
-    count_row = db._fetchone(
+    count_row = await adb._fetchone(
         f"SELECT COUNT(*) as total FROM jobs WHERE {where_sql}",
         tuple(params_sql),
     )
     total = count_row["total"] if count_row else 0
 
     # Fetch page
-    rows = db._fetchall(
+    rows = await adb._fetchall(
         f"""SELECT id, title, company, location, url, source, original_source,
                    salary_raw, salary_min, salary_max, salary_currency,
                    job_type, seniority, is_remote, country, tags, topics, created_at

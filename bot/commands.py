@@ -7,7 +7,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from core import db
+from core import db_async as adb
 from core.config import ADMIN_TELEGRAM_ID, TELEGRAM_GROUP_ID
 from core.models import Job
 from core.channels import get_topic_thread_id
@@ -41,7 +41,7 @@ HELP_TEXT = """
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Ensure user exists in DB so DM alerts can reach them
     user = update.effective_user
-    db.get_or_create_user(user.id, user.username or "")
+    await adb.get_or_create_user(user.id, user.username or "")
 
     # Handle deep link from group (/start subscribe)
     if context.args and context.args[0] == "subscribe":
@@ -83,13 +83,13 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     # Ensure user exists and has DMs enabled (recovery if they were once blocked)
-    db_user = db.get_or_create_user(update.effective_user.id, update.effective_user.username or "")
+    db_user = await adb.get_or_create_user(update.effective_user.id, update.effective_user.username or "")
     if not db_user.get("notify_dm", True):
-        db._execute("UPDATE users SET notify_dm = TRUE WHERE id = %s", (db_user["id"],))
+        await adb._execute("UPDATE users SET notify_dm = TRUE WHERE id = %s", (db_user["id"],))
 
     # Safety check: if they have too many alerts, block creation
     try:
-        alerts = db.get_user_alerts(db_user["id"])
+        alerts = await adb.get_user_alerts(db_user["id"])
         if len(alerts) >= 5:
             await update.message.reply_text(
                 "⚠️ You already have 5 alerts. Use /unsubscribe or /mysubs to remove some first."
@@ -110,8 +110,8 @@ async def cmd_subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show a chooser of alerts to remove (or 'remove all')."""
     user = update.effective_user
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    alerts = db.get_user_alerts(db_user["id"])
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    alerts = await adb.get_user_alerts(db_user["id"])
 
     if not alerts:
         await update.message.reply_text(
@@ -129,10 +129,10 @@ async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def cmd_mysubs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """List current user alerts with Edit/Delete/DM toggle buttons."""
     user = update.effective_user
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
     
     try:
-        alerts = db.get_user_alerts(db_user["id"])
+        alerts = await adb.get_user_alerts(db_user["id"])
     except Exception as e:
         log.exception(f"Error in /mysubs: {e}")
         await update.message.reply_text(
@@ -204,7 +204,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     query = " ".join(args)
     try:
-        results = db._fetchall(
+        results = await adb._fetchall(
             """SELECT * FROM jobs
                WHERE created_at > now() - make_interval(days := 14)
                  AND (title ILIKE %s OR %s = ANY(tags))
@@ -242,8 +242,8 @@ async def _show_saved_page(update_or_query, user, page: int) -> None:
     per_page = 5
     offset = (page - 1) * per_page
 
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    saved = db.get_saved_jobs(db_user["id"], limit=per_page + 1, offset=offset)
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    saved = await adb.get_saved_jobs(db_user["id"], limit=per_page + 1, offset=offset)
 
     has_more = len(saved) > per_page
     saved = saved[:per_page]
@@ -281,28 +281,28 @@ async def _show_saved_page(update_or_query, user, page: int) -> None:
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show bot statistics."""
     try:
-        today = db._fetchone(
+        today = await adb._fetchone(
             "SELECT COUNT(*) as count FROM jobs WHERE created_at > now() - make_interval(days := 1)"
         )
-        week = db._fetchone(
+        week = await adb._fetchone(
             "SELECT COUNT(*) as count FROM jobs WHERE created_at > now() - make_interval(days := 7)"
         )
-        total = db._fetchone("SELECT COUNT(*) as count FROM jobs")
-        sources = db._fetchall(
+        total = await adb._fetchone("SELECT COUNT(*) as count FROM jobs")
+        sources = await adb._fetchall(
             """SELECT source, COUNT(*) as count FROM jobs
                WHERE created_at > now() - make_interval(days := 7)
                GROUP BY source ORDER BY count DESC LIMIT 5"""
         )
         
         # New: Trending topics
-        topics = db._fetchall(
+        topics = await adb._fetchall(
             """SELECT unnest(topics) as topic, COUNT(*) as count FROM jobs
                WHERE created_at > now() - make_interval(days := 7)
                GROUP BY topic ORDER BY count DESC LIMIT 5"""
         )
         
         # New: Global salary average
-        salary = db._fetchone(
+        salary = await adb._fetchone(
             """SELECT AVG(salary_min) as min, AVG(salary_max) as max 
                FROM jobs WHERE salary_min IS NOT NULL 
                AND created_at > now() - make_interval(days := 30)"""
@@ -335,7 +335,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show system health (source status)."""
     try:
-        sources = db._fetchall(
+        sources = await adb._fetchall(
             "SELECT * FROM source_health ORDER BY source ASC"
         )
     except Exception as e:
@@ -353,8 +353,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     healthy = []
 
     for s in sources:
-        is_open = s.get("circuit_open_until") and s["circuit_open_until"] > db.now() # assuming db has now() or using raw SQL comparison
-        # Better: use the existing is_source_circuit_open logic but we have the rows already
         from datetime import datetime, timezone
         is_circuit_open = False
         if s.get("circuit_open_until"):
@@ -392,7 +390,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show top jobs this week by engagement."""
     try:
-        top_jobs = db._fetchall(
+        top_jobs = await adb._fetchall(
             """SELECT j.*, COUNT(jf.id) as engagement
                FROM jobs j
                LEFT JOIN job_feedback jf ON j.id = jf.job_id
@@ -496,9 +494,9 @@ async def cmd_salary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show the user's application history."""
     user = update.effective_user
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
 
-    total = db.get_application_count(db_user["id"])
+    total = await adb.get_application_count(db_user["id"])
     if total == 0:
         await update.message.reply_text(
             "No applications tracked yet.\n"
@@ -506,7 +504,7 @@ async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    rows = db.get_application_history(db_user["id"], limit=10)
+    rows = await adb.get_application_history(db_user["id"], limit=10)
 
     lines = [f"📋 <b>Application History</b> ({total} total)\n"]
     for row in rows:
@@ -515,7 +513,7 @@ async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         applied_at = row["applied_at"].strftime("%b %d")
         lines.append(f"• <b>{title}</b> at {company} — {applied_at}")
 
-    streak = db.get_streak(db_user["id"])
+    streak = await adb.get_streak(db_user["id"])
     lines.append(f"\n🔥 Current streak: {streak['current']} day{'s' if streak['current'] != 1 else ''}")
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -524,10 +522,10 @@ async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_streak(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show the user's application streak."""
     user = update.effective_user
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
 
-    streak = db.get_streak(db_user["id"])
-    total = db.get_application_count(db_user["id"])
+    streak = await adb.get_streak(db_user["id"])
+    total = await adb.get_application_count(db_user["id"])
 
     if total == 0:
         await update.message.reply_text(
@@ -580,10 +578,10 @@ async def cmd_blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         /blacklist clear                — clear entire blacklist
     """
     user = update.effective_user
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
     args = context.args or []
 
-    bl = db.get_blacklist(db_user["id"])
+    bl = await adb.get_blacklist(db_user["id"])
 
     # No args — show current blacklist
     if not args:
@@ -615,7 +613,7 @@ async def cmd_blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     action = args[0].lower()
 
     if action == "clear":
-        db.update_blacklist(db_user["id"], {"companies": [], "keywords": []})
+        await adb.update_blacklist(db_user["id"], {"companies": [], "keywords": []})
         await update.message.reply_text("✅ Blacklist cleared.")
         return
 
@@ -638,7 +636,7 @@ async def cmd_blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if action == "add":
         if value.lower() not in [v.lower() for v in bl[list_key]]:
             bl[list_key].append(value)
-            db.update_blacklist(db_user["id"], bl)
+            await adb.update_blacklist(db_user["id"], bl)
             await update.message.reply_text(f"✅ Added {category} '{_escape_html(value)}' to blacklist.", parse_mode="HTML")
         else:
             await update.message.reply_text(f"Already blacklisted.")
@@ -648,7 +646,7 @@ async def cmd_blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if value.lower() in lower_values:
             idx = lower_values.index(value.lower())
             bl[list_key].pop(idx)
-            db.update_blacklist(db_user["id"], bl)
+            await adb.update_blacklist(db_user["id"], bl)
             await update.message.reply_text(f"✅ Removed {category} '{_escape_html(value)}' from blacklist.", parse_mode="HTML")
         else:
             await update.message.reply_text(f"'{_escape_html(value)}' not found in blacklist.", parse_mode="HTML")
@@ -668,7 +666,7 @@ async def cmd_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         /contact feature <message>
     """
     user = update.effective_user
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
     args = context.args or []
 
     if not args:
@@ -700,7 +698,7 @@ async def cmd_contact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Message too long. Please keep it under 2000 characters.")
         return
 
-    db.create_support_message(
+    await adb.create_support_message(
         user_id=db_user["id"],
         telegram_id=user.id,
         username=user.username or "",
@@ -748,16 +746,16 @@ async def cmd_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     args = context.args or []
 
     if args and args[0].lower() == "readall":
-        count = db.mark_all_support_messages_read()
+        count = await adb.mark_all_support_messages_read()
         await update.message.reply_text(f"✅ Marked {count} message(s) as read.")
         return
 
-    unread_count = db.count_unread_support_messages()
+    unread_count = await adb.count_unread_support_messages()
     if unread_count == 0:
         await update.message.reply_text("No unread messages.")
         return
 
-    messages = db.get_unread_support_messages(limit=10)
+    messages = await adb.get_unread_support_messages(limit=10)
 
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 

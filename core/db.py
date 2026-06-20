@@ -8,13 +8,14 @@ connection pool. Import and call functions directly; no ORM involved.
 import json
 import logging
 import socket
+import threading
 from contextlib import contextmanager
 from typing import Optional
 
 import psycopg2
 import psycopg2.extras
 from psycopg2.extras import Json, RealDictCursor
-from psycopg2.pool import SimpleConnectionPool
+from psycopg2.pool import ThreadedConnectionPool
 
 from core.config import (
     SUPABASE_DB_HOST,
@@ -23,6 +24,9 @@ from core.config import (
     SUPABASE_DB_USER,
     SUPABASE_DB_PASSWORD,
     SUPABASE_DB_SSLMODE,
+    DB_CONNECT_TIMEOUT,
+    DB_STATEMENT_TIMEOUT_MS,
+    DB_POOL_MAXCONN,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,13 +35,26 @@ logger = logging.getLogger(__name__)
 # Connection pool
 # =============================================================================
 
-_pool: Optional[SimpleConnectionPool] = None
+_pool: Optional[ThreadedConnectionPool] = None
+_pool_lock = threading.Lock()
 
 
-def _get_pool() -> SimpleConnectionPool:
-    """Lazy-initialise the connection pool on first use."""
+def _get_pool() -> ThreadedConnectionPool:
+    """
+    Lazy-initialise the connection pool on first use.
+
+    Thread-safe: DB calls now run on asyncio worker threads (see core.db_async),
+    so pool creation is guarded by a lock and the pool itself is a
+    ThreadedConnectionPool (SimpleConnectionPool is not thread-safe).
+    """
     global _pool
-    if _pool is None:
+    if _pool is not None:
+        return _pool
+
+    with _pool_lock:
+        if _pool is not None:  # double-check: another thread may have built it
+            return _pool
+
         db_host = SUPABASE_DB_HOST
 
         # Supabase direct hosts (db.xxx.supabase.co) are IPv6-only.
@@ -60,16 +77,25 @@ def _get_pool() -> SimpleConnectionPool:
         except socket.gaierror:
             pass
 
-        _pool = SimpleConnectionPool(
+        _pool = ThreadedConnectionPool(
             minconn=1,
-            maxconn=5,
+            maxconn=DB_POOL_MAXCONN,
             host=db_host,
             port=SUPABASE_DB_PORT,
             dbname=SUPABASE_DB_NAME,
             user=SUPABASE_DB_USER,
             password=SUPABASE_DB_PASSWORD,
             sslmode=SUPABASE_DB_SSLMODE,
-            options="-c search_path=public -c timezone=UTC",
+            # Fail fast instead of hanging the event loop if the DB stalls/dies.
+            connect_timeout=DB_CONNECT_TIMEOUT,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
+            options=(
+                "-c search_path=public -c timezone=UTC "
+                f"-c statement_timeout={DB_STATEMENT_TIMEOUT_MS}"
+            ),
         )
     return _pool
 

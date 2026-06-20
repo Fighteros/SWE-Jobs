@@ -28,6 +28,14 @@ SUPABASE_DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
 # DB_SSLMODE=require for Supabase.
 SUPABASE_DB_SSLMODE: str = os.getenv("DB_SSLMODE", "prefer")
 
+# Connection resilience — keep a stalled DB connection from hanging the event loop.
+# connect_timeout fails fast if the db container is unreachable; statement_timeout
+# caps any single query server-side; maxconn bounds concurrent DB ops (now that DB
+# calls run on worker threads).
+DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "10"))               # seconds
+DB_STATEMENT_TIMEOUT_MS: int = int(os.getenv("DB_STATEMENT_TIMEOUT_MS", "30000"))  # 30s
+DB_POOL_MAXCONN: int = int(os.getenv("DB_POOL_MAXCONN", "10"))
+
 # =============================================================================
 # Telegram
 # =============================================================================

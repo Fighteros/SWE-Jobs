@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from core.logging_config import setup_logging
 from core.config import MAX_JOBS_PER_RUN, SEED_MODE_ENV, TELEGRAM_BOT_TOKEN
-from core import db
+from core import db_async as adb
 from core.enrichment import enrich_job
 from core.filtering import filter_jobs
 from core.dedup import deduplicate_batch
@@ -28,7 +28,7 @@ async def main():
     log.info("Programming Jobs Bot v2 — Starting run")
 
     # ── 1. Start run tracking ──────────────────────────────
-    run_id = db.start_run()
+    run_id = await adb.start_run()
     source_stats = {}
     errors = []
 
@@ -73,18 +73,18 @@ async def main():
 
     # ── 5. Deduplicate ──────────────────────────────────────
     # Get existing unique_ids from DB
-    existing = db._fetchall("SELECT unique_id FROM jobs")
+    existing = await adb._fetchall("SELECT unique_id FROM jobs")
     seen_ids = {row["unique_id"] for row in existing}
 
     new_jobs = deduplicate_batch(filtered, seen_ids)
     log.info(f"New jobs: {len(new_jobs)}")
 
     # ── 6. Fuzzy dedup + batch insert ─────────────────────
-    non_dupes = db.fuzzy_dedup_batch(new_jobs)
+    non_dupes = await adb.fuzzy_dedup_batch(new_jobs)
     fuzzy_dupes = len(new_jobs) - len(non_dupes)
     log.info(f"Fuzzy dedup: {fuzzy_dupes} duplicates removed, {len(non_dupes)} remaining")
 
-    inserted_rows = db.insert_jobs_batch(non_dupes)
+    inserted_rows = await adb.insert_jobs_batch(non_dupes)
     # Build (Job, db_id) list for sending
     now = datetime.now(timezone.utc)
     uid_to_job = {job.unique_id: job for job in non_dupes}
@@ -128,7 +128,7 @@ async def main():
 
     # ── 8. Finish run tracking ──────────────────────────────
     source_stats["_jobs_attempted"] = jobs_attempted
-    db.finish_run(
+    await adb.finish_run(
         run_id,
         jobs_fetched=len(all_jobs),
         jobs_filtered=len(filtered),

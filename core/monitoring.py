@@ -9,7 +9,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 
 from core.config import ADMIN_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
-from core import db
+from core import db_async as adb
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
     alerts = []
 
     try:
-        run = db._fetchone("SELECT * FROM bot_runs WHERE id = %s", (run_id,))
+        run = await adb._fetchone("SELECT * FROM bot_runs WHERE id = %s", (run_id,))
         if not run:
             return alerts
 
@@ -57,7 +57,7 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
         # Alert: run took too long
         if run["finished_at"] and run["started_at"]:
             # Duration check via DB
-            duration = db._fetchone(
+            duration = await adb._fetchone(
                 "SELECT EXTRACT(EPOCH FROM (%s - %s)) as seconds",
                 (run["finished_at"], run["started_at"]),
             )
@@ -87,7 +87,7 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
                 alerts.append(msg)
 
         # Alert: circuit breaker opened
-        broken = db._fetchall(
+        broken = await adb._fetchall(
             "SELECT source FROM source_health WHERE circuit_open_until > now()"
         )
         for row in broken:
@@ -108,7 +108,7 @@ async def send_daily_digest(bot: Bot) -> bool:
     """
     try:
         # Jobs sent today
-        today_stats = db._fetchone(
+        today_stats = await adb._fetchone(
             """SELECT
                  COUNT(*) as total,
                  COUNT(CASE WHEN sent_at IS NOT NULL THEN 1 END) as sent
@@ -117,14 +117,14 @@ async def send_daily_digest(bot: Bot) -> bool:
         )
 
         # Source health
-        sources = db._fetchall(
+        sources = await adb._fetchall(
             """SELECT source, consecutive_failures, circuit_open_until > now() AS is_broken
                FROM source_health
                ORDER BY consecutive_failures DESC"""
         )
 
         # Error count today
-        errors = db._fetchone(
+        errors = await adb._fetchone(
             """SELECT COUNT(*) as count FROM bot_runs
                WHERE started_at > now() - make_interval(days := 1)
                  AND jsonb_array_length(errors) > 0"""

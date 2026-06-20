@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Query, Request
 from typing import Optional
 from api.middleware import limiter
-from core import db
+from core import db_async as adb
 from core.egytech import get_stats
 from core.egytech_mapping import parse_role_query, SENIORITY_TO_LEVEL
 
@@ -17,27 +17,27 @@ router = APIRouter()
 @limiter.limit("30/minute")
 async def stats_summary(request: Request):
     """Aggregated stats for the dashboard home page."""
-    today = db._fetchone(
+    today = await adb._fetchone(
         "SELECT COUNT(*) as count FROM jobs WHERE created_at > now() - make_interval(days := 1)"
     )
-    week = db._fetchone(
+    week = await adb._fetchone(
         "SELECT COUNT(*) as count FROM jobs WHERE created_at > now() - make_interval(days := 7)"
     )
-    total = db._fetchone("SELECT COUNT(*) as count FROM jobs")
+    total = await adb._fetchone("SELECT COUNT(*) as count FROM jobs")
 
-    by_source = db._fetchall(
+    by_source = await adb._fetchall(
         """SELECT source, COUNT(*) as count FROM jobs
            WHERE created_at > now() - make_interval(days := 7)
            GROUP BY source ORDER BY count DESC"""
     )
 
-    by_topic = db._fetchall(
+    by_topic = await adb._fetchall(
         """SELECT unnest(topics) as topic, COUNT(*) as count FROM jobs
            WHERE created_at > now() - make_interval(days := 7)
            GROUP BY topic ORDER BY count DESC"""
     )
 
-    top_companies = db._fetchall(
+    top_companies = await adb._fetchall(
         """SELECT company, COUNT(*) as count FROM jobs
            WHERE created_at > now() - make_interval(days := 7)
              AND company != ''
@@ -118,7 +118,7 @@ async def skill_trends(
     days = {"7d": 7, "14d": 14, "30d": 30}.get(period, 7)
 
     # Current period
-    current = db._fetchall(
+    current = await adb._fetchall(
         """SELECT unnest(tags) as skill, COUNT(*) as count
            FROM jobs WHERE created_at > now() - make_interval(days := %s)
            GROUP BY skill ORDER BY count DESC LIMIT 20""",
@@ -126,7 +126,7 @@ async def skill_trends(
     )
 
     # Previous period (for comparison)
-    previous = db._fetchall(
+    previous = await adb._fetchall(
         """SELECT unnest(tags) as skill, COUNT(*) as count
            FROM jobs WHERE created_at BETWEEN
              now() - make_interval(days := %s)

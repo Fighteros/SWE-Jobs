@@ -7,6 +7,7 @@ import logging
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
 )
+from telegram.request import HTTPXRequest
 from core.config import TELEGRAM_BOT_TOKEN
 
 log = logging.getLogger(__name__)
@@ -20,7 +21,34 @@ def get_app() -> Application:
     if _app is None:
         if not TELEGRAM_BOT_TOKEN:
             raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
-        _app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+        # Tuned HTTP clients for resilient long-polling on a self-hosted server.
+        # PTB defaults (tiny pool, ~5s timeouts) make transient Telegram 502s and
+        # connection resets surface as NetworkError(httpx.ReadError) more often
+        # than necessary. PTB uses a *separate* request object for get_updates, so
+        # both are configured; the get_updates read_timeout must exceed the
+        # long-poll timeout (30s, set in start_polling).
+        request = HTTPXRequest(
+            connection_pool_size=8,
+            connect_timeout=10.0,
+            read_timeout=20.0,
+            write_timeout=20.0,
+            pool_timeout=10.0,
+        )
+        get_updates_request = HTTPXRequest(
+            connection_pool_size=2,
+            connect_timeout=10.0,
+            read_timeout=40.0,
+            write_timeout=20.0,
+            pool_timeout=10.0,
+        )
+        _app = (
+            Application.builder()
+            .token(TELEGRAM_BOT_TOKEN)
+            .request(request)
+            .get_updates_request(get_updates_request)
+            .build()
+        )
         _register_handlers(_app)
         log.info("Telegram bot application created")
     return _app
@@ -64,7 +92,11 @@ async def start_polling() -> None:
     app = get_app()
     await app.initialize()
     await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
+    await app.updater.start_polling(
+        drop_pending_updates=True,
+        timeout=30,            # long-poll timeout (s); must stay < get_updates read_timeout
+        bootstrap_retries=-1,  # retry initial getMe/deleteWebhook forever (network may lag at boot)
+    )
     log.info("Bot polling started")
 
 

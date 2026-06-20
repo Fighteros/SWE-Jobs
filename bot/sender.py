@@ -11,7 +11,7 @@ from telegram.error import TelegramError, RetryAfter, TimedOut, NetworkError
 from core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_ID, TELEGRAM_SEND_DELAY
 from core.models import Job
 from core.channels import CHANNELS, get_topic_thread_id, SOURCE_ICON
-from core import db
+from core import db_async as adb
 from bot.keyboards import job_buttons
 
 log = logging.getLogger(__name__)
@@ -164,7 +164,7 @@ async def send_jobs(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
 
         # Update DB with message IDs
         if sent:
-            db.mark_job_sent(db_id, sent)
+            await adb.mark_job_sent(db_id, sent)
             jobs_delivered += 1
 
         for t_key in sent:

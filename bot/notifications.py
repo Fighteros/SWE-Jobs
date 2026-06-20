@@ -7,7 +7,7 @@ import logging
 from telegram import Bot
 from telegram.error import TelegramError
 
-from core import db
+from core import db_async as adb
 from core.models import Job
 from bot.sender import format_job_message
 from bot.keyboards import job_buttons
@@ -108,7 +108,7 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
     Returns: Total DMs sent
     """
     try:
-        users = db._fetchall(
+        users = await adb._fetchall(
             "SELECT * FROM users WHERE notify_dm = TRUE"
         )
     except Exception as e:
@@ -122,10 +122,10 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
         user_id = user_row["id"]
         
         try:
-            alerts = db.get_user_alerts(user_id)
+            alerts = await adb.get_user_alerts(user_id)
             if not alerts:
                 continue
-            blacklist = db.get_blacklist(user_id)
+            blacklist = await adb.get_blacklist(user_id)
             dm_count = 0
 
             for job, db_id in jobs:
@@ -165,7 +165,7 @@ async def notify_subscribers(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
                         "bot can't initiate conversation",
                         "have no rights to send a message",
                     )):
-                        db._execute(
+                        await adb._execute(
                             "UPDATE users SET notify_dm = FALSE WHERE telegram_id = %s",
                             (telegram_id,),
                         )

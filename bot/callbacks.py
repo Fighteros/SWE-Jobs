@@ -7,7 +7,7 @@ import logging
 from telegram import Update, Bot
 from telegram.ext import ContextTypes
 
-from core import db
+from core import db_async as adb
 from core.config import ADMIN_TELEGRAM_ID
 from core.models import Job
 from bot.sender import format_job_message
@@ -89,8 +89,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def _handle_save(query, user, data: str) -> None:
     """Save a job for the user."""
     job_id = int(data.split(":")[1])
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    saved = db.save_job_for_user(db_user["id"], job_id)
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    saved = await adb.save_job_for_user(db_user["id"], job_id)
 
     if saved:
         try:
@@ -105,12 +105,12 @@ async def _handle_save(query, user, data: str) -> None:
 async def _handle_applied(query, user, data: str) -> None:
     """Record that the user applied to this job."""
     job_id = int(data.split(":")[1])
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    is_new = db.mark_applied(db_user["id"], job_id)
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    is_new = await adb.mark_applied(db_user["id"], job_id)
 
     if is_new:
-        streak = db.get_streak(db_user["id"])
-        total = db.get_application_count(db_user["id"])
+        streak = await adb.get_streak(db_user["id"])
+        total = await adb.get_application_count(db_user["id"])
         streak_msg = f"🔥 Streak: {streak['current']} day{'s' if streak['current'] != 1 else ''}"
         try:
             await query.from_user.send_message(
@@ -127,7 +127,7 @@ async def _handle_applied(query, user, data: str) -> None:
 async def _handle_share(query, user, data: str) -> None:
     """Generate a shareable text for the job."""
     job_id = int(data.split(":")[1])
-    row = db._fetchone("SELECT title, company, url FROM jobs WHERE id = %s", (job_id,))
+    row = await adb._fetchone("SELECT title, company, url FROM jobs WHERE id = %s", (job_id,))
     if not row:
         await query.answer("Job not found", show_alert=True)
         return
@@ -145,7 +145,7 @@ async def _handle_share(query, user, data: str) -> None:
 async def _handle_similar(query, user, bot: Bot, data: str) -> None:
     """Find and send similar jobs via DM."""
     job_id = int(data.split(":")[1])
-    row = db._fetchone("SELECT * FROM jobs WHERE id = %s", (job_id,))
+    row = await adb._fetchone("SELECT * FROM jobs WHERE id = %s", (job_id,))
     if not row:
         await query.answer("Job not found", show_alert=True)
         return
@@ -154,7 +154,7 @@ async def _handle_similar(query, user, bot: Bot, data: str) -> None:
 
     # Find similar jobs using the ranking query from the spec
     try:
-        similar = db._fetchall(
+        similar = await adb._fetchall(
             """SELECT j.* FROM jobs j
                WHERE j.id != %s
                  AND j.created_at > now() - make_interval(days := 14)
@@ -188,8 +188,8 @@ async def _handle_similar(query, user, bot: Bot, data: str) -> None:
 async def _handle_not_relevant(query, user, data: str) -> None:
     """Record negative feedback."""
     job_id = int(data.split(":")[1])
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    db.add_feedback(job_id, db_user["id"], "not_relevant")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    await adb.add_feedback(job_id, db_user["id"], "not_relevant")
     await query.answer("Thanks for the feedback!", show_alert=False)
 
 
@@ -308,19 +308,19 @@ async def _handle_sub_source_done(query, user, context) -> None:
         "min_salary": context.user_data.get("sub_min_salary"),
     }
 
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
     edit_position = context.user_data.pop("edit_position", None)
 
     if edit_position is not None:
-        ok = db.update_user_alert(db_user["id"], edit_position, alert_payload)
+        ok = await adb.update_user_alert(db_user["id"], edit_position, alert_payload)
         if ok:
             header = f"✅ Alert #{edit_position} updated."
         else:
             header = f"⚠️ Alert #{edit_position} no longer exists."
     else:
-        new_id = db.create_user_alert(db_user["id"], alert_payload)
+        new_id = await adb.create_user_alert(db_user["id"], alert_payload)
         # Look up its position to show in the confirmation
-        alerts = db.get_user_alerts(db_user["id"])
+        alerts = await adb.get_user_alerts(db_user["id"])
         position = next((a["position"] for a in alerts if a["id"] == new_id), len(alerts))
         header = f"✅ Alert #{position} created. You'll receive DM alerts for matching jobs."
 
@@ -371,7 +371,7 @@ async def _handle_msg_read(query, user, data: str) -> None:
         return
 
     message_id = int(data.split(":")[1])
-    db.mark_support_message_read(message_id)
+    await adb.mark_support_message_read(message_id)
 
     await query.edit_message_text(
         query.message.text_html + "\n\n<i>✅ Marked as read</i>",
@@ -383,7 +383,7 @@ async def _handle_msg_read(query, user, data: str) -> None:
 async def _handle_unsub(query, user, context, data: str) -> None:
     """Handle /unsubscribe chooser callbacks: unsub:<n>, unsub:all, unsub:all_confirm, unsub:cancel."""
     action = data.split(":", 1)[1]
-    db_user = db.get_or_create_user(user.id, user.username or "")
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
 
     if action == "cancel":
         await query.edit_message_text("Cancelled.")
@@ -391,7 +391,7 @@ async def _handle_unsub(query, user, context, data: str) -> None:
 
     if action == "all":
         from bot.keyboards import confirm_remove_all_keyboard
-        alerts = db.get_user_alerts(db_user["id"])
+        alerts = await adb.get_user_alerts(db_user["id"])
         await query.edit_message_text(
             f"⚠️ Remove ALL {len(alerts)} alerts? This cannot be undone.",
             reply_markup=confirm_remove_all_keyboard(),
@@ -399,7 +399,7 @@ async def _handle_unsub(query, user, context, data: str) -> None:
         return
 
     if action == "all_confirm":
-        count = db.delete_all_user_alerts(db_user["id"])
+        count = await adb.delete_all_user_alerts(db_user["id"])
         await query.edit_message_text(f"✅ Removed {count} alert(s).")
         return
 
@@ -410,11 +410,11 @@ async def _handle_unsub(query, user, context, data: str) -> None:
         log.warning(f"Bad unsub callback: {data}")
         return
 
-    ok = db.delete_user_alert(db_user["id"], position)
+    ok = await adb.delete_user_alert(db_user["id"], position)
     if not ok:
         await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
         return
-    remaining = len(db.get_user_alerts(db_user["id"]))
+    remaining = len(await adb.get_user_alerts(db_user["id"]))
     await query.edit_message_text(
         f"✅ Alert #{position} removed. You have {remaining} alert(s) left."
     )
@@ -428,8 +428,8 @@ async def _handle_del(query, user, context, data: str) -> None:
         log.warning(f"Bad del callback: {data}")
         return
 
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    ok = db.delete_user_alert(db_user["id"], position)
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    ok = await adb.delete_user_alert(db_user["id"], position)
     if not ok:
         await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
         return
@@ -453,14 +453,14 @@ async def _handle_dm(query, user, context, data: str) -> None:
         return
     enabled = target == "on"
 
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    ok = db.set_alert_dm_enabled(db_user["id"], position, enabled)
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    ok = await adb.set_alert_dm_enabled(db_user["id"], position, enabled)
     if not ok:
         await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
         return
 
     # Re-render the card with the new label.
-    alert = db.get_user_alert(db_user["id"], position)
+    alert = await adb.get_user_alert(db_user["id"], position)
     if alert is None:
         await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
         return
@@ -509,8 +509,8 @@ async def _handle_edit(query, user, context, data: str) -> None:
         log.warning(f"Bad edit callback: {data}")
         return
 
-    db_user = db.get_or_create_user(user.id, user.username or "")
-    alert = db.get_user_alert(db_user["id"], position)
+    db_user = await adb.get_or_create_user(user.id, user.username or "")
+    alert = await adb.get_user_alert(db_user["id"], position)
     if alert is None:
         await query.edit_message_text(f"⚠️ Alert #{position} no longer exists.")
         return
