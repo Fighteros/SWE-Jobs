@@ -20,30 +20,47 @@ _app: Application | None = None
 # fine for a transient blip, but if the host's path to Telegram is broken (DNS,
 # firewall, routing) it retries forever with no recovery, and `updater.running`
 # stays True the whole time so server.py's dead-poller watchdog never fires.
-# Track how long polling has been failing *continuously* so the watchdog can
-# force a restart (fresh network stack) when a streak runs too long.
-_last_error_at: float = 0.0
+# Track how long polling has been failing *continuously* (i.e. with no successful
+# get_updates in between — see _wrap_get_updates_for_liveness below) so the
+# watchdog can force a restart (fresh network stack) when a streak runs too long.
 _error_streak_started_at: float = 0.0
-_ERROR_STREAK_GAP = 90.0  # seconds; longer than poll timeout(30s)+backoff(30s) = new streak
 
 
 def _on_polling_error(exc: TelegramError) -> None:
-    """error_callback for start_polling: log once (no traceback spam) and track streak."""
-    global _last_error_at, _error_streak_started_at
-    now = time.monotonic()
-    if now - _last_error_at > _ERROR_STREAK_GAP:
-        _error_streak_started_at = now
-    _last_error_at = now
+    """error_callback for start_polling: log once (no traceback spam) and mark a streak."""
+    global _error_streak_started_at
+    if _error_streak_started_at == 0.0:
+        _error_streak_started_at = time.monotonic()
     log.warning("Telegram polling error (auto-retrying): %s", exc)
+
+
+def _on_polling_success() -> None:
+    """Called after every successful get_updates (including empty long-poll timeouts)."""
+    global _error_streak_started_at
+    _error_streak_started_at = 0.0
 
 
 def polling_stuck(threshold: float = 300.0) -> bool:
     """True if polling has been failing continuously for over `threshold` seconds."""
-    if _last_error_at == 0.0:
+    if _error_streak_started_at == 0.0:
         return False
-    now = time.monotonic()
-    still_failing = now - _last_error_at < _ERROR_STREAK_GAP
-    return still_failing and (now - _error_streak_started_at) > threshold
+    return (time.monotonic() - _error_streak_started_at) > threshold
+
+
+def _wrap_get_updates_for_liveness(app: Application) -> None:
+    """
+    Wrap bot.get_updates so a successful call (including empty long-poll timeouts,
+    which don't raise) resets the error streak. Without this, intermittent failures
+    separated by successes would otherwise look like one continuous outage.
+    """
+    original = app.bot.get_updates
+
+    async def _tracked(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        _on_polling_success()
+        return result
+
+    app.bot.get_updates = _tracked
 
 
 def get_app() -> Application:
@@ -123,6 +140,7 @@ async def start_polling() -> None:
     app = get_app()
     await app.initialize()
     await app.start()
+    _wrap_get_updates_for_liveness(app)
     await app.updater.start_polling(
         drop_pending_updates=True,
         timeout=30,            # long-poll timeout (s); must stay < get_updates read_timeout
