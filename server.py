@@ -53,11 +53,12 @@ async def _polling_watchdog():
     then exits the process if the updater stops unexpectedly, so Docker
     (restart: unless-stopped) brings the whole stack back.
 
-    Note: this catches a *dead* poller, not a *blocked* event loop — loop
-    blocking is prevented separately by running all DB I/O off-loop
+    Note: this catches a *dead* poller and a poller stuck in a continuous
+    error-retry streak (e.g. host can't reach Telegram) — see bot.app.polling_stuck.
+    Loop blocking is prevented separately by running all DB I/O off-loop
     (see core/db_async.py).
     """
-    from bot.app import start_polling, get_app
+    from bot.app import start_polling, get_app, polling_stuck
 
     backoff = 5
     for attempt in range(1, 6):
@@ -86,6 +87,9 @@ async def _polling_watchdog():
         updater = bot_app.updater
         if updater is None or not updater.running:
             log.critical("Telegram updater stopped unexpectedly — exiting for restart")
+            os._exit(1)
+        if polling_stuck():
+            log.critical("Telegram polling stuck in an error retry loop — exiting for restart")
             os._exit(1)
 
 

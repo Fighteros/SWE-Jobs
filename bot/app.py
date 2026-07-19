@@ -4,6 +4,8 @@ Uses python-telegram-bot in polling mode with asyncio.
 """
 
 import logging
+import time
+from telegram.error import TelegramError
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
 )
@@ -13,6 +15,52 @@ from core.config import TELEGRAM_BOT_TOKEN
 log = logging.getLogger(__name__)
 
 _app: Application | None = None
+
+# PTB retries polling errors (e.g. Telegram 502s) forever with backoff — that's
+# fine for a transient blip, but if the host's path to Telegram is broken (DNS,
+# firewall, routing) it retries forever with no recovery, and `updater.running`
+# stays True the whole time so server.py's dead-poller watchdog never fires.
+# Track how long polling has been failing *continuously* (i.e. with no successful
+# get_updates in between — see _wrap_get_updates_for_liveness below) so the
+# watchdog can force a restart (fresh network stack) when a streak runs too long.
+_error_streak_started_at: float = 0.0
+
+
+def _on_polling_error(exc: TelegramError) -> None:
+    """error_callback for start_polling: log once (no traceback spam) and mark a streak."""
+    global _error_streak_started_at
+    if _error_streak_started_at == 0.0:
+        _error_streak_started_at = time.monotonic()
+    log.warning("Telegram polling error (auto-retrying): %s", exc)
+
+
+def _on_polling_success() -> None:
+    """Called after every successful get_updates (including empty long-poll timeouts)."""
+    global _error_streak_started_at
+    _error_streak_started_at = 0.0
+
+
+def polling_stuck(threshold: float = 300.0) -> bool:
+    """True if polling has been failing continuously for over `threshold` seconds."""
+    if _error_streak_started_at == 0.0:
+        return False
+    return (time.monotonic() - _error_streak_started_at) > threshold
+
+
+def _wrap_get_updates_for_liveness(app: Application) -> None:
+    """
+    Wrap bot.get_updates so a successful call (including empty long-poll timeouts,
+    which don't raise) resets the error streak. Without this, intermittent failures
+    separated by successes would otherwise look like one continuous outage.
+    """
+    original = app.bot.get_updates
+
+    async def _tracked(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        _on_polling_success()
+        return result
+
+    app.bot.get_updates = _tracked
 
 
 def get_app() -> Application:
@@ -92,10 +140,12 @@ async def start_polling() -> None:
     app = get_app()
     await app.initialize()
     await app.start()
+    _wrap_get_updates_for_liveness(app)
     await app.updater.start_polling(
         drop_pending_updates=True,
         timeout=30,            # long-poll timeout (s); must stay < get_updates read_timeout
         bootstrap_retries=-1,  # retry initial getMe/deleteWebhook forever (network may lag at boot)
+        error_callback=_on_polling_error,
     )
     log.info("Bot polling started")
 
