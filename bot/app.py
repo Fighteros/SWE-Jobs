@@ -4,6 +4,8 @@ Uses python-telegram-bot in polling mode with asyncio.
 """
 
 import logging
+import time
+from telegram.error import TelegramError
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
 )
@@ -13,6 +15,35 @@ from core.config import TELEGRAM_BOT_TOKEN
 log = logging.getLogger(__name__)
 
 _app: Application | None = None
+
+# PTB retries polling errors (e.g. Telegram 502s) forever with backoff — that's
+# fine for a transient blip, but if the host's path to Telegram is broken (DNS,
+# firewall, routing) it retries forever with no recovery, and `updater.running`
+# stays True the whole time so server.py's dead-poller watchdog never fires.
+# Track how long polling has been failing *continuously* so the watchdog can
+# force a restart (fresh network stack) when a streak runs too long.
+_last_error_at: float = 0.0
+_error_streak_started_at: float = 0.0
+_ERROR_STREAK_GAP = 90.0  # seconds; longer than poll timeout(30s)+backoff(30s) = new streak
+
+
+def _on_polling_error(exc: TelegramError) -> None:
+    """error_callback for start_polling: log once (no traceback spam) and track streak."""
+    global _last_error_at, _error_streak_started_at
+    now = time.monotonic()
+    if now - _last_error_at > _ERROR_STREAK_GAP:
+        _error_streak_started_at = now
+    _last_error_at = now
+    log.warning("Telegram polling error (auto-retrying): %s", exc)
+
+
+def polling_stuck(threshold: float = 300.0) -> bool:
+    """True if polling has been failing continuously for over `threshold` seconds."""
+    if _last_error_at == 0.0:
+        return False
+    now = time.monotonic()
+    still_failing = now - _last_error_at < _ERROR_STREAK_GAP
+    return still_failing and (now - _error_streak_started_at) > threshold
 
 
 def get_app() -> Application:
@@ -96,6 +127,7 @@ async def start_polling() -> None:
         drop_pending_updates=True,
         timeout=30,            # long-poll timeout (s); must stay < get_updates read_timeout
         bootstrap_retries=-1,  # retry initial getMe/deleteWebhook forever (network may lag at boot)
+        error_callback=_on_polling_error,
     )
     log.info("Bot polling started")
 
