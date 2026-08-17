@@ -20,4 +20,4 @@ jobs:
           port: 22
           debug: true
           script: |
-            cd ${{ secrets.PROJECT_PATH }} && git pull origin main && docker compose --profile bot run --rm --build bot
+            cd ${{ secrets.PROJECT_PATH }} && git pull origin main && docker compose up -d --build

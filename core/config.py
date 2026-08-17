@@ -44,6 +44,18 @@ TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_GROUP_ID: str = os.getenv("TELEGRAM_GROUP_ID", "")
 TELEGRAM_SEND_DELAY: int = 3  # seconds between messages
 
+# Polling supervision (bot/polling.py) — all optional, sensible defaults.
+# Brief Telegram outages (502s, timeouts) are retried by PTB itself; these
+# control when the supervisor rebuilds the poller in-process and when it gives
+# up and exits so the container supervisor restarts the stack.
+TELEGRAM_POLL_CHECK_INTERVAL: int = int(os.getenv("TELEGRAM_POLL_CHECK_INTERVAL", "30"))        # seconds between liveness checks
+TELEGRAM_POLL_STUCK_THRESHOLD: int = int(os.getenv("TELEGRAM_POLL_STUCK_THRESHOLD", "300"))     # continuous failure streak that triggers a rebuild
+TELEGRAM_POLL_STARTUP_RETRIES: int = int(os.getenv("TELEGRAM_POLL_STARTUP_RETRIES", "5"))       # initial start attempts before exiting
+TELEGRAM_POLL_RECOVERY_ATTEMPTS: int = int(os.getenv("TELEGRAM_POLL_RECOVERY_ATTEMPTS", "3"))   # rebuild attempts per incident before exiting
+TELEGRAM_POLL_BACKOFF_INITIAL: float = float(os.getenv("TELEGRAM_POLL_BACKOFF_INITIAL", "2"))   # first retry delay (seconds)
+TELEGRAM_POLL_BACKOFF_MAX: float = float(os.getenv("TELEGRAM_POLL_BACKOFF_MAX", "60"))          # retry delay ceiling (seconds)
+TELEGRAM_POLL_STOP_TIMEOUT: float = float(os.getenv("TELEGRAM_POLL_STOP_TIMEOUT", "30"))        # teardown timeout before abandoning an instance
+
 # =============================================================================
 # API Keys (all optional — sources are skipped if key is absent)
 # =============================================================================
