@@ -3,10 +3,19 @@ name: Programming Jobs Bot v2 (DISABLED — runs on self-hosted server now)
 # Disabled: the bot now runs on the self-hosted server via docker compose
 # (server.py scheduler handles the 5-minute pipeline loop).
 # To re-enable for a different DB setup, uncomment the triggers below.
+#
+# WARNING: this one-shot pipeline overlaps with server.py's built-in scheduler.
+# Only dispatch manually (e.g. for testing) if the backend's scheduler is
+# stopped, or you will get duplicate fetch/send runs.
 on:
   # schedule:
   #   - cron: '*/5 * * * *'
   workflow_dispatch:
+
+# Never let two pipeline runs overlap (manual or scheduled).
+concurrency:
+  group: job-pipeline
+  cancel-in-progress: false
 
 jobs:
   run-bot:

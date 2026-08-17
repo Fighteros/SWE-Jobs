@@ -1,6 +1,10 @@
 """
-Telegram bot application setup.
+Telegram bot application factory and explicit polling lifecycle.
 Uses python-telegram-bot in polling mode with asyncio.
+
+Lifecycle ownership lives in bot/polling.py (PollingSupervisor): this module
+only builds fresh Applications and provides start/stop primitives that are
+safe to call on any instance, exactly once or partially-failed.
 """
 
 import logging
@@ -14,16 +18,18 @@ from core.config import TELEGRAM_BOT_TOKEN
 
 log = logging.getLogger(__name__)
 
-_app: Application | None = None
-
+# ---------------------------------------------------------------------------
+# Polling liveness tracking (consumed by bot.polling.PollingSupervisor)
+# ---------------------------------------------------------------------------
 # PTB retries polling errors (e.g. Telegram 502s) forever with backoff — that's
 # fine for a transient blip, but if the host's path to Telegram is broken (DNS,
 # firewall, routing) it retries forever with no recovery, and `updater.running`
-# stays True the whole time so server.py's dead-poller watchdog never fires.
+# stays True the whole time so a purely dead-poller watchdog never fires.
 # Track how long polling has been failing *continuously* (i.e. with no successful
 # get_updates in between — see _wrap_get_updates_for_liveness below) so the
-# watchdog can force a restart (fresh network stack) when a streak runs too long.
+# supervisor can rebuild the poller when a streak runs too long.
 _error_streak_started_at: float = 0.0
+_last_success_at: float = 0.0
 
 
 def _on_polling_error(exc: TelegramError) -> None:
@@ -36,8 +42,9 @@ def _on_polling_error(exc: TelegramError) -> None:
 
 def _on_polling_success() -> None:
     """Called after every successful get_updates (including empty long-poll timeouts)."""
-    global _error_streak_started_at
+    global _error_streak_started_at, _last_success_at
     _error_streak_started_at = 0.0
+    _last_success_at = time.monotonic()
 
 
 def polling_stuck(threshold: float = 300.0) -> bool:
@@ -47,59 +54,114 @@ def polling_stuck(threshold: float = 300.0) -> bool:
     return (time.monotonic() - _error_streak_started_at) > threshold
 
 
+def reset_polling_state() -> None:
+    """Clear streak/liveness bookkeeping (called before starting a fresh instance)."""
+    global _error_streak_started_at, _last_success_at
+    _error_streak_started_at = 0.0
+    _last_success_at = 0.0
+
+
+def polling_status() -> dict:
+    """Liveness snapshot for health endpoints."""
+    now = time.monotonic()
+    return {
+        "stuck": polling_stuck(),
+        "error_streak_seconds": round(now - _error_streak_started_at, 1)
+        if _error_streak_started_at
+        else 0.0,
+        "last_success_seconds_ago": round(now - _last_success_at, 1)
+        if _last_success_at
+        else None,
+    }
+
+
 def _wrap_get_updates_for_liveness(app: Application) -> None:
     """
     Wrap bot.get_updates so a successful call (including empty long-poll timeouts,
-    which don't raise) resets the error streak. Without this, intermittent failures
-    separated by successes would otherwise look like one continuous outage.
+    which don't raise) resets the error streak. Idempotent: wrapping the same
+    instance twice adds a single tracking layer.
     """
-    original = app.bot.get_updates
+    bot = app.bot
+    if getattr(bot.get_updates, "_is_liveness_tracked", False):
+        return
+
+    original = bot.get_updates
 
     async def _tracked(*args, **kwargs):
         result = await original(*args, **kwargs)
         _on_polling_success()
         return result
 
-    app.bot.get_updates = _tracked
+    _tracked._is_liveness_tracked = True
+    bot.get_updates = _tracked
 
 
-def get_app() -> Application:
-    """Get or create the bot Application singleton."""
-    global _app
-    if _app is None:
-        if not TELEGRAM_BOT_TOKEN:
-            raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
+# ---------------------------------------------------------------------------
+# Application factory
+# ---------------------------------------------------------------------------
 
-        # Tuned HTTP clients for resilient long-polling on a self-hosted server.
-        # PTB defaults (tiny pool, ~5s timeouts) make transient Telegram 502s and
-        # connection resets surface as NetworkError(httpx.ReadError) more often
-        # than necessary. PTB uses a *separate* request object for get_updates, so
-        # both are configured; the get_updates read_timeout must exceed the
-        # long-poll timeout (30s, set in start_polling).
-        request = HTTPXRequest(
-            connection_pool_size=8,
-            connect_timeout=10.0,
-            read_timeout=20.0,
-            write_timeout=20.0,
-            pool_timeout=10.0,
-        )
-        get_updates_request = HTTPXRequest(
-            connection_pool_size=2,
-            connect_timeout=10.0,
-            read_timeout=40.0,
-            write_timeout=20.0,
-            pool_timeout=10.0,
-        )
-        _app = (
-            Application.builder()
-            .token(TELEGRAM_BOT_TOKEN)
-            .request(request)
-            .get_updates_request(get_updates_request)
-            .build()
-        )
-        _register_handlers(_app)
-        log.info("Telegram bot application created")
-    return _app
+def create_application() -> Application:
+    """
+    Build a fresh Telegram Application: tuned HTTP pools, all handlers, and a
+    global error handler for update-processing exceptions. A new instance per
+    start/recovery attempt guarantees fresh network state and untouched
+    lifecycle flags.
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN not set")
+
+    # Tuned HTTP clients for resilient long-polling on a self-hosted server.
+    # PTB defaults (tiny pool, ~5s timeouts) make transient Telegram 502s and
+    # connection resets surface as NetworkError(httpx.ReadError) more often
+    # than necessary. PTB uses a *separate* request object for get_updates, so
+    # both are configured; the get_updates read_timeout must exceed the
+    # long-poll timeout (30s, set in start_polling).
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        connect_timeout=10.0,
+        read_timeout=20.0,
+        write_timeout=20.0,
+        pool_timeout=10.0,
+    )
+    get_updates_request = HTTPXRequest(
+        connection_pool_size=2,
+        connect_timeout=10.0,
+        read_timeout=40.0,
+        write_timeout=20.0,
+        pool_timeout=10.0,
+    )
+    app = (
+        Application.builder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .request(request)
+        .get_updates_request(get_updates_request)
+        .build()
+    )
+    _register_handlers(app)
+    app.add_error_handler(_handle_update_error)
+    log.info("Telegram bot application created")
+    return app
+
+
+async def _handle_update_error(update: object, context) -> None:
+    """
+    Global PTB error handler: log full context server-side and, best-effort,
+    tell the user something generic — never internals or stack traces.
+    """
+    log.error(
+        "Unhandled error while processing update: %s",
+        context.error,
+        exc_info=context.error,
+    )
+    try:
+        effective_chat = getattr(update, "effective_chat", None) if update is not None else None
+        if effective_chat is not None:
+            await context.bot.send_message(
+                chat_id=effective_chat.id,
+                text="Something went wrong while handling your request. Please try again.",
+            )
+    except TelegramError:
+        pass  # can't reach the user; already logged
 
 
 def _register_handlers(app: Application) -> None:
@@ -135,25 +197,47 @@ def _register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(handle_callback))
 
 
-async def start_polling() -> None:
-    """Start the bot in polling mode."""
-    app = get_app()
+# ---------------------------------------------------------------------------
+# Explicit lifecycle primitives (operate on a given Application instance)
+# ---------------------------------------------------------------------------
+
+async def start_polling(app: Application) -> None:
+    """
+    Bring a fresh Application into polling mode:
+    initialize → start → liveness wrap → updater.start_polling.
+    On partial failure everything already started is unwound and the error
+    re-raised, so the caller can simply discard the instance.
+    """
     await app.initialize()
-    await app.start()
+    try:
+        await app.start()
+    except Exception:
+        await app.shutdown()
+        raise
+
     _wrap_get_updates_for_liveness(app)
-    await app.updater.start_polling(
-        drop_pending_updates=True,
-        timeout=30,            # long-poll timeout (s); must stay < get_updates read_timeout
-        bootstrap_retries=-1,  # retry initial getMe/deleteWebhook forever (network may lag at boot)
-        error_callback=_on_polling_error,
-    )
+    try:
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            timeout=30,            # long-poll timeout (s); must stay < get_updates read_timeout
+            bootstrap_retries=0,   # supervisor owns startup retries with backoff
+            error_callback=_on_polling_error,
+        )
+    except Exception:
+        await app.stop()
+        await app.shutdown()
+        raise
     log.info("Bot polling started")
 
 
-async def stop_polling() -> None:
-    """Stop the bot gracefully."""
-    if _app and _app.updater:
-        await _app.updater.stop()
-        await _app.stop()
-        await _app.shutdown()
-        log.info("Bot polling stopped")
+async def stop_polling(app: Application) -> None:
+    """Tear a polling Application down completely. Idempotent per instance."""
+    if app is None:
+        return
+    if app.updater is not None and app.updater.running:
+        await app.updater.stop()
+    if app.running:
+        await app.stop()
+    if app.initialized:
+        await app.shutdown()
+    log.info("Bot polling stopped")

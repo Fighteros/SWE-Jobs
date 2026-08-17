@@ -2,7 +2,7 @@
 
 ## Overview
 
-SWE-Jobs is a pipeline-based job aggregation system. Every 5 minutes, GitHub Actions triggers `main.py`, which runs the full pipeline: fetch -> enrich -> filter -> dedup -> insert -> send -> notify -> monitor.
+SWE-Jobs is a job aggregation system. A long-lived FastAPI server (`server.py`) runs on the self-hosted VPS via Docker Compose and owns two background loops: the supervised Telegram bot poller and the scheduled pipeline. Every `FETCH_INTERVAL_MINUTES` (default 5) the scheduler runs the full pipeline: fetch -> enrich -> filter -> dedup -> insert -> send -> notify -> monitor. `main.py` remains a one-shot entrypoint for manual pipeline runs (e.g. seeding or testing) — do not run it while the server scheduler is active.
 
 ## Pipeline Stages
 
@@ -172,7 +172,9 @@ Connects to Supabase directly for reads and the FastAPI backend for aggregated q
 
 ## Deployment
 
-- **Bot pipeline** — GitHub Actions cron every 5 minutes (`job_bot.yml`)
+- **Backend (bot + poller + scheduler + API)** — self-hosted VPS, `docker compose up -d --build` (service `backend`, `restart: unless-stopped`). GitHub Actions (`deploy_backend.yml`) redeploys on push to `main`.
+- **Telegram polling supervision** — `bot/polling.py` `PollingSupervisor` starts polling, lets PTB retry transient errors (502s, timeouts), rebuilds the poller in-process after a continuous failure streak (fresh Application + HTTP pools), and only exits for a container restart if recovery keeps failing. `/health` reports polling liveness; the backend service has a Docker healthcheck.
+- **Bot pipeline (manual)** — `main.py` one-shot workflow (`job_bot.yml`, manual dispatch only; overlaps with the server scheduler by design).
 - **Dashboard** — GitHub Pages, deployed on push to `main` (`deploy_dashboard.yml`)
 - **Job archival** — GitHub Actions periodic workflow (`archive_jobs.yml`)
-- **Database** — Supabase free tier (PostgreSQL with pgvector, pg_trgm)
+- **Database** — self-hosted Postgres container in the same Compose stack

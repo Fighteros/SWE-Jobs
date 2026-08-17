@@ -34,6 +34,10 @@ def create_app(lifespan=None) -> FastAPI:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok"}
+        # Includes supervised-polling liveness so the Docker healthcheck (and
+        # humans) can tell a bot-down backend from a healthy one.
+        from bot.polling import get_supervisor_status
+
+        return {"status": "ok", "telegram": get_supervisor_status()}
 
     return app
