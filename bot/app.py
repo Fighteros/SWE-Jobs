@@ -78,22 +78,28 @@ def polling_status() -> dict:
 def _wrap_get_updates_for_liveness(app: Application) -> None:
     """
     Wrap bot.get_updates so a successful call (including empty long-poll timeouts,
-    which don't raise) resets the error streak. Idempotent: wrapping the same
-    instance twice adds a single tracking layer.
+    which don't raise) resets the error streak. Idempotent: wrapping twice adds
+    a single tracking layer.
+
+    PTB's TelegramObject forbids assigning attributes on bot *instances*
+    (`AttributeError: ... can't be set!`), so the wrapper is installed once on
+    the bot's class instead — it then applies to every instance, including the
+    fresh Application built per recovery attempt.
     """
     bot = app.bot
     if getattr(bot.get_updates, "_is_liveness_tracked", False):
         return
 
-    original = bot.get_updates
+    cls = type(bot)
+    original = cls.get_updates
 
-    async def _tracked(*args, **kwargs):
-        result = await original(*args, **kwargs)
+    async def _tracked(self, *args, **kwargs):
+        result = await original(self, *args, **kwargs)
         _on_polling_success()
         return result
 
     _tracked._is_liveness_tracked = True
-    bot.get_updates = _tracked
+    cls.get_updates = _tracked
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +210,11 @@ def _register_handlers(app: Application) -> None:
 async def start_polling(app: Application) -> None:
     """
     Bring a fresh Application into polling mode:
-    initialize → start → liveness wrap → updater.start_polling.
+    liveness wrap → initialize → start → updater.start_polling.
     On partial failure everything already started is unwound and the error
     re-raised, so the caller can simply discard the instance.
     """
+    _wrap_get_updates_for_liveness(app)
     await app.initialize()
     try:
         await app.start()
@@ -215,7 +222,6 @@ async def start_polling(app: Application) -> None:
         await app.shutdown()
         raise
 
-    _wrap_get_updates_for_liveness(app)
     try:
         await app.updater.start_polling(
             drop_pending_updates=True,

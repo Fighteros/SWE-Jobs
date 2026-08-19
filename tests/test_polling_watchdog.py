@@ -123,14 +123,53 @@ async def test_liveness_wrapper_resets_streak_on_success():
 
 
 async def test_liveness_wrapper_is_idempotent():
-    """Wrapping the same instance twice must not nest trackers."""
+    """Wrapping the same bot class twice must not nest trackers."""
     app = _FakeApp()
     app_mod._wrap_get_updates_for_liveness(app)
-    first = app.bot.get_updates
+    first = _FakeBot.get_updates
 
     app_mod._wrap_get_updates_for_liveness(app)
 
-    assert app.bot.get_updates is first
+    assert _FakeBot.get_updates is first
+    assert getattr(_FakeBot.get_updates, "_is_liveness_tracked", False)
+    assert getattr(app.bot.get_updates, "_is_liveness_tracked", False)
+    _reset()
+
+
+async def test_liveness_wrapper_survives_instance_replacement():
+    """A fresh Application gets a fresh bot instance; tracking must still apply."""
+    app_mod._wrap_get_updates_for_liveness(_FakeApp())
+    fresh_app = _FakeApp()
+
+    app_mod._error_streak_started_at = 123.0
+    await fresh_app.bot.get_updates(timeout=30)
+
+    assert app_mod._error_streak_started_at == 0.0
+    _reset()
+
+
+async def test_liveness_wrapper_installs_on_slotted_bot_class():
+    """PTB's ExtBot forbids instance attribute assignment; the wrap must still work."""
+    class _SlottedBot:
+        __slots__ = ()
+
+        def __setattr__(self, key, value):
+            raise AttributeError(f"Attribute `{key}` of class `_SlottedBot` can't be set!")
+
+        async def get_updates(self, **kwargs):
+            return []
+
+    class _SlottedApp:
+        def __init__(self):
+            self.bot = _SlottedBot()
+
+    app = _SlottedApp()
+    app_mod._wrap_get_updates_for_liveness(app)
+
+    app_mod._error_streak_started_at = 123.0
+    await app.bot.get_updates(timeout=30)
+
+    assert app_mod._error_streak_started_at == 0.0
     assert getattr(app.bot.get_updates, "_is_liveness_tracked", False)
     _reset()
 
