@@ -83,3 +83,10 @@ REQUEST_TIMEOUT: int = 15        # seconds for HTTP requests
 SEED_MODE_ENV: str = "SEED_MODE" # env var name checked to force seed mode
 SEEN_JOBS_FILE: str = "seen_jobs.json"
 FETCH_INTERVAL_MINUTES: int = int(os.getenv("FETCH_INTERVAL_MINUTES", "5"))
+
+# Wuzzuf browser state. A persistent profile lets the scraper retain a
+# Cloudflare clearance and avoids creating a brand-new browser identity on
+# every scheduled run.
+WUZZUF_PROFILE_DIR: str = os.getenv("WUZZUF_PROFILE_DIR", ".wuzzuf-profile")
+WUZZUF_HEADLESS: bool = os.getenv("WUZZUF_HEADLESS", "true").lower() not in {"0", "false", "no"}
+WUZZUF_MAX_PAGES: int = int(os.getenv("WUZZUF_MAX_PAGES", "3"))
