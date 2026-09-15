@@ -87,6 +87,6 @@ FETCH_INTERVAL_MINUTES: int = int(os.getenv("FETCH_INTERVAL_MINUTES", "5"))
 # Wuzzuf browser state. A persistent profile lets the scraper retain a
 # Cloudflare clearance and avoids creating a brand-new browser identity on
 # every scheduled run.
-WUZZUF_PROFILE_DIR: str = os.getenv("WUZZUF_PROFILE_DIR", ".wuzzuf-profile")
+WUZZUF_PROFILE_DIR: str = os.getenv("WUZZUF_PROFILE_DIR") or ".wuzzuf-profile"
 WUZZUF_HEADLESS: bool = os.getenv("WUZZUF_HEADLESS", "true").lower() not in {"0", "false", "no"}
 WUZZUF_MAX_PAGES: int = int(os.getenv("WUZZUF_MAX_PAGES", "3"))

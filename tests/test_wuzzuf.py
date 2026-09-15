@@ -1,5 +1,8 @@
+import importlib
+import os
 from datetime import timezone
 
+import core.config as config
 from sources.wuzzuf import (
     _extract_state,
     _job_id,
@@ -66,3 +69,10 @@ def test_job_id_accepts_wuzzuf_slug_or_url():
     assert _job_id("/jobs/p/123456-senior-python-engineer") == "123456"
     assert _job_id("https://wuzzuf.net/jobs/p/123456-senior-python-engineer") == "123456"
     assert _job_id("/jobs/p/not-a-number") == ""
+
+
+def test_blank_profile_env_uses_persistent_default(monkeypatch):
+    monkeypatch.setenv("WUZZUF_PROFILE_DIR", "")
+    importlib.reload(config)
+    assert config.WUZZUF_PROFILE_DIR == ".wuzzuf-profile"
+    monkeypatch.setenv("WUZZUF_PROFILE_DIR", os.getenv("WUZZUF_PROFILE_DIR", ""))
