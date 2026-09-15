@@ -33,6 +33,13 @@ SEARCHES = [
     # UAE
     {"q": "software engineer", "l": "United Arab Emirates", "fromage": "1"},
     {"q": "software developer", "l": "United Arab Emirates", "fromage": "1"},
+    # Non-tech categories
+    {"q": "marketing manager", "l": "Remote", "fromage": "1"},
+    {"q": "product manager", "l": "Remote", "fromage": "1"},
+    {"q": "hr manager", "l": "Egypt", "fromage": "1"},
+    {"q": "accountant", "l": "Egypt", "fromage": "1"},
+    {"q": "operations manager", "l": "Saudi Arabia", "fromage": "1"},
+    {"q": "customer support", "l": "Saudi Arabia", "fromage": "1"},
 ]
 
 

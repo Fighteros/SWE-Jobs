@@ -48,6 +48,12 @@ Each topic in a Telegram supergroup has a thread ID. The thread ID is the number
 | `TOPIC_SAUDI` | Saudi Jobs | Optional |
 | `TOPIC_INTERNSHIPS` | Internships | Optional |
 | `TOPIC_ERP` | ERP & Accounting | Optional |
+| `TOPIC_MARKETING_SALES` | Marketing & Sales | Optional |
+| `TOPIC_HR_RECRUITING` | HR & Recruiting | Optional |
+| `TOPIC_FINANCE_ACCOUNTING` | Finance & Accounting | Optional |
+| `TOPIC_ADMIN_OPERATIONS` | Admin & Operations | Optional |
+| `TOPIC_CUSTOMER_SUPPORT` | Customer Support | Optional |
+| `TOPIC_PRODUCT_PM` | Product & Project Management | Optional |
 
 Topics without a configured thread ID are skipped. You can start with just `TOPIC_GENERAL` and add more later.
 

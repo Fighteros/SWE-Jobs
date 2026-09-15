@@ -28,6 +28,13 @@ SEARCHES = [
     {"keyword": "data scientist"},
     {"keyword": "QA engineer"},
     {"keyword": "cloud engineer"},
+    # Non-tech categories
+    {"keyword": "marketing manager"},
+    {"keyword": "hr manager"},
+    {"keyword": "accountant"},
+    {"keyword": "operations manager"},
+    {"keyword": "customer support"},
+    {"keyword": "product manager"},
 ]
 
 REQUEST_DELAY = 3

@@ -139,6 +139,31 @@ INCLUDE_KEYWORDS = [
     "graduate program", "training program",
     "co-op", "apprentice", "apprenticeship",
     "working student", "student developer",
+    # Non-technical roles (RoleRadar non-tech topics)
+    "marketing", "marketing manager", "marketing specialist",
+    "digital marketing", "growth marketer", "seo specialist",
+    "content marketing", "brand manager", "social media manager",
+    "community manager",
+    "sales", "sales manager", "sales representative",
+    "business development", "account manager", "account executive",
+    "customer success manager", "partnerships",
+    "human resources", "hr manager", "hr specialist",
+    "hr business partner", "people operations", "people ops",
+    "recruiter", "recruiting", "recruitment",
+    "talent acquisition", "talent acquisition specialist",
+    "finance", "finance manager", "financial manager",
+    "financial analyst", "accountant", "accounting",
+    "bookkeeper", "controller", "payroll",
+    "administrative", "admin assistant", "administrator",
+    "office manager", "office administrator",
+    "executive assistant", "virtual assistant",
+    "operations", "operations manager", "operations specialist",
+    "logistics", "supply chain", "data entry",
+    "customer support", "customer service", "technical support",
+    "support specialist", "help desk",
+    "product manager", "associate product manager", "product owner",
+    "project manager", "program manager", "scrum master",
+    "agile coach", "delivery manager",
     # General (broad catch — filtered by EXCLUDE)
     "programmer", "developer", "engineer",
 ]
@@ -146,21 +171,12 @@ INCLUDE_KEYWORDS = [
 # ─── Exclude Keywords ────────────────────────────────────────
 # Job is EXCLUDED if it contains any of these (case-insensitive)
 EXCLUDE_KEYWORDS = [
-    # Non-programming roles
+    # Design (no dedicated topic)
     "graphic design", "ui/ux design", "ux design", "ux researcher",
     "product design", "visual design", "brand design", "interior design",
-    "marketing", "sales", "account manager", "account executive",
-    "recruiter", "talent acquisition", "hr manager", "human resources",
-    "customer support", "customer service", "customer success",
+    # Other non-target roles
+    "business analyst",
     "content writer", "copywriter",
-    "project manager", "program manager", "scrum master",
-    "product manager", "product owner",
-    "business analyst", "business development",
-    "financial analyst", "accountant", "bookkeeper",
-    "office manager", "administrative",
-    "data entry", "virtual assistant",
-    "social media manager", "community manager",
-    "supply chain", "logistics",
     # Hardware / Non-software engineering
     "mechanical engineer", "electrical engineer", "civil engineer",
     "chemical engineer", "structural engineer",

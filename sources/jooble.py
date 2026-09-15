@@ -22,6 +22,13 @@ SEARCHES = [
     {"keywords": "software engineer", "location": "Saudi Arabia"},
     {"keywords": "software developer", "location": "Riyadh, Saudi Arabia"},
     {"keywords": "flutter developer", "location": "Saudi Arabia"},
+    # Non-tech categories
+    {"keywords": "marketing manager", "location": "remote"},
+    {"keywords": "product manager", "location": "remote"},
+    {"keywords": "hr manager", "location": "Egypt"},
+    {"keywords": "accountant", "location": "Cairo, Egypt"},
+    {"keywords": "operations manager", "location": "Saudi Arabia"},
+    {"keywords": "customer support", "location": "Riyadh, Saudi Arabia"},
 ]
 
 

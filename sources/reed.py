@@ -16,6 +16,12 @@ SEARCHES = [
     {"keywords": "flutter developer remote", "resultsToTake": 15},
     {"keywords": "devops engineer remote", "resultsToTake": 15},
     {"keywords": "data scientist remote", "resultsToTake": 15},
+    {"keywords": "marketing manager remote", "resultsToTake": 15},
+    {"keywords": "hr manager remote", "resultsToTake": 15},
+    {"keywords": "accountant remote", "resultsToTake": 15},
+    {"keywords": "operations manager remote", "resultsToTake": 15},
+    {"keywords": "customer support remote", "resultsToTake": 15},
+    {"keywords": "product manager remote", "resultsToTake": 15},
 ]
 
 
