@@ -50,7 +50,7 @@ def fetch_wuzzuf() -> list[Job]:
     """Fetch Wuzzuf jobs using a persistent browser profile when configured."""
     jobs: list[Job] = []
     seen_ids: set[str] = set()
-    profile_dir = WUZZUF_PROFILE_DIR or os.getenv("WUZZUF_PROFILE_DIR", "")
+    profile_dir = WUZZUF_PROFILE_DIR
     max_pages = max(1, WUZZUF_MAX_PAGES)
 
     try:
