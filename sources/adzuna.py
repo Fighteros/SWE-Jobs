@@ -15,6 +15,13 @@ SEARCHES = [
     {"country": "gb", "what": "software developer", "where": "", "extra": {}},
     {"country": "us", "what": "software engineer remote", "where": "", "extra": {}},
     {"country": "de", "what": "software developer remote", "where": "", "extra": {}},
+    # Non-tech categories
+    {"country": "gb", "what": "marketing manager", "where": "", "extra": {}},
+    {"country": "us", "what": "hr manager", "where": "", "extra": {}},
+    {"country": "de", "what": "accountant", "where": "", "extra": {}},
+    {"country": "gb", "what": "operations manager", "where": "", "extra": {}},
+    {"country": "us", "what": "customer support remote", "where": "", "extra": {}},
+    {"country": "de", "what": "product manager", "where": "", "extra": {}},
 ]
 
 

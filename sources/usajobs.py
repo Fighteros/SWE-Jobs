@@ -12,6 +12,13 @@ URL = "https://data.usajobs.gov/api/search"
 SEARCHES = [
     {"Keyword": "software developer", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
     {"Keyword": "software engineer", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
+    # Non-tech categories
+    {"Keyword": "marketing manager", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
+    {"Keyword": "hr manager", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
+    {"Keyword": "accountant", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
+    {"Keyword": "operations manager", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
+    {"Keyword": "customer support", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
+    {"Keyword": "product manager", "LocationName": "", "RemoteIndicator": "True", "ResultsPerPage": 20},
 ]
 
 

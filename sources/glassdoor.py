@@ -30,6 +30,13 @@ SEARCHES = [
     # UAE
     {"sc.keyword": "software engineer", "locT": "N", "locKeyword": "United Arab Emirates"},
     {"sc.keyword": "software developer", "locT": "N", "locKeyword": "United Arab Emirates"},
+    # Non-tech categories
+    {"sc.keyword": "marketing manager", "locT": "", "locKeyword": "Remote"},
+    {"sc.keyword": "product manager", "locT": "", "locKeyword": "Remote"},
+    {"sc.keyword": "hr manager", "locT": "N", "locKeyword": "Egypt"},
+    {"sc.keyword": "accountant", "locT": "N", "locKeyword": "Egypt"},
+    {"sc.keyword": "operations manager", "locT": "N", "locKeyword": "Saudi Arabia"},
+    {"sc.keyword": "customer support", "locT": "N", "locKeyword": "United Arab Emirates"},
 ]
 
 # Only get jobs from last 24 hours

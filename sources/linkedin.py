@@ -41,6 +41,25 @@ SEARCHES = [
     {"keywords": "machine learning engineer", "f_WT": "2", "f_TPR": "r86400"},
     {"keywords": "data scientist", "f_WT": "2", "f_TPR": "r86400"},
     {"keywords": "QA engineer", "f_WT": "2", "f_TPR": "r86400"},
+    # Non-tech categories
+    {"keywords": "marketing manager", "location": "Egypt", "f_TPR": "r86400"},
+    {"keywords": "hr manager", "location": "Egypt", "f_TPR": "r86400"},
+    {"keywords": "accountant", "location": "Egypt", "f_TPR": "r86400"},
+    {"keywords": "operations manager", "location": "Egypt", "f_TPR": "r86400"},
+    {"keywords": "customer support", "location": "Egypt", "f_TPR": "r86400"},
+    {"keywords": "product manager", "location": "Egypt", "f_TPR": "r86400"},
+    {"keywords": "marketing manager", "location": "Saudi Arabia", "f_TPR": "r86400"},
+    {"keywords": "hr manager", "location": "Saudi Arabia", "f_TPR": "r86400"},
+    {"keywords": "accountant", "location": "Saudi Arabia", "f_TPR": "r86400"},
+    {"keywords": "operations manager", "location": "Saudi Arabia", "f_TPR": "r86400"},
+    {"keywords": "customer support", "location": "Saudi Arabia", "f_TPR": "r86400"},
+    {"keywords": "product manager", "location": "Saudi Arabia", "f_TPR": "r86400"},
+    {"keywords": "marketing manager", "f_WT": "2", "f_TPR": "r86400"},
+    {"keywords": "hr manager", "f_WT": "2", "f_TPR": "r86400"},
+    {"keywords": "accountant", "f_WT": "2", "f_TPR": "r86400"},
+    {"keywords": "operations manager", "f_WT": "2", "f_TPR": "r86400"},
+    {"keywords": "customer support", "f_WT": "2", "f_TPR": "r86400"},
+    {"keywords": "product manager", "f_WT": "2", "f_TPR": "r86400"},
 ]
 
 # Delay between requests to avoid rate limiting

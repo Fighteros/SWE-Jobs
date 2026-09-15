@@ -24,6 +24,13 @@ SEARCHES = [
     {"query": "software engineer remote", **_BASE_REMOTE},
     {"query": "software developer in Egypt", **_BASE_LOCAL},
     {"query": "software developer in Saudi Arabia", **_BASE_LOCAL},
+    # Non-tech categories (keep minimal due to free RapidAPI tier)
+    {"query": "marketing manager in Egypt", **_BASE_LOCAL},
+    {"query": "hr manager in Saudi Arabia", **_BASE_LOCAL},
+    {"query": "product manager remote", **_BASE_REMOTE},
+    {"query": "accountant in Egypt", **_BASE_LOCAL},
+    {"query": "operations manager in Saudi Arabia", **_BASE_LOCAL},
+    {"query": "customer support remote", **_BASE_REMOTE},
 ]
 
 # Map publisher names for display

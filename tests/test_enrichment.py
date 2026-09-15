@@ -47,6 +47,36 @@ class TestEnrichJob:
         assert "egypt" in enriched.topics
         assert "backend" not in enriched.topics
 
+    def test_routes_marketing_sales(self):
+        job = _make_job(title="Marketing Manager", location="Remote")
+        enriched = enrich_job(job)
+        assert "marketing_sales" in enriched.topics
+
+    def test_routes_hr_recruiting(self):
+        job = _make_job(title="HR Manager", location="Remote")
+        enriched = enrich_job(job)
+        assert "hr_recruiting" in enriched.topics
+
+    def test_routes_finance_accounting(self):
+        job = _make_job(title="Accountant", location="Remote")
+        enriched = enrich_job(job)
+        assert "finance_accounting" in enriched.topics
+
+    def test_routes_admin_operations(self):
+        job = _make_job(title="Office Manager", location="Remote")
+        enriched = enrich_job(job)
+        assert "admin_operations" in enriched.topics
+
+    def test_routes_customer_support(self):
+        job = _make_job(title="Customer Support Specialist", location="Remote")
+        enriched = enrich_job(job)
+        assert "customer_support" in enriched.topics
+
+    def test_routes_product_pm(self):
+        job = _make_job(title="Product Manager", location="Remote")
+        enriched = enrich_job(job)
+        assert "product_pm" in enriched.topics
+
     def test_preserves_existing_fields(self):
         job = _make_job(title="Dev", company="Acme", tags=["python"])
         enriched = enrich_job(job)

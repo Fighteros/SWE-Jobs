@@ -27,6 +27,13 @@ SEARCHES = [
     "machine learning engineer",
     "QA engineer",
     "cloud engineer",
+    # Non-tech categories
+    "marketing manager",
+    "hr manager",
+    "accountant",
+    "operations manager",
+    "customer support",
+    "product manager",
 ]
 
 

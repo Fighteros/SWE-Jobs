@@ -35,13 +35,16 @@ SENIORITY_TO_LEVEL: dict[str, str] = {
 # Topics not in this dict (gamedev, blockchain, erp, internships, general, egypt, saudi)
 # have no clean mapping and produce no salary lookup.
 TOPIC_TO_TITLE: dict[str, str] = {
-    "backend":       "backend",
-    "frontend":      "frontend",
-    "fullstack":     "fullstack",
-    "mobile":        "mobile",
-    "devops":        "devops_sre_platform",
-    "qa":            "testing",
-    "cybersecurity": "security",
+    "backend":          "backend",
+    "frontend":         "frontend",
+    "fullstack":        "fullstack",
+    "mobile":           "mobile",
+    "devops":           "devops_sre_platform",
+    "qa":               "testing",
+    "cybersecurity":    "security",
+    # Non-tech topics with close egytech equivalents
+    "product_pm":       "product_manager",
+    "customer_support": "technical_support",
 }
 
 # Free-text aliases the user might type (in /salary or the dashboard search).
@@ -90,6 +93,7 @@ _ROLE_ALIASES: dict[str, str] = {
     "scrum": "scrum", "scrum master": "scrum",
     "research": "research", "researcher": "research",
     "support": "technical_support", "technical support": "technical_support",
+    "customer support": "technical_support",
     "architect": "system_arch", "system architect": "system_arch",
     "ai": "ai_automation",
     "crm": "crm",

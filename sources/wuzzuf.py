@@ -26,6 +26,13 @@ SEARCHES = [
     {"q": "data scientist", "a": "hpb"},
     {"q": "machine learning engineer", "a": "hpb"},
     {"q": "QA engineer", "a": "hpb"},
+    # Non-tech categories
+    {"q": "marketing manager", "a": "hpb"},
+    {"q": "hr manager", "a": "hpb"},
+    {"q": "accountant", "a": "hpb"},
+    {"q": "operations manager", "a": "hpb"},
+    {"q": "customer support", "a": "hpb"},
+    {"q": "product manager", "a": "hpb"},
 ]
 
 

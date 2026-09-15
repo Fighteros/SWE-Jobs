@@ -27,12 +27,12 @@ class TestScoreJob:
         assert score >= 3
 
     def test_exclude_rejects(self):
-        job = _make_job(title="Sales Engineer")
+        job = _make_job(title="Civil Engineer")
         assert is_programming_job(job) is False
 
-    def test_marketing_rejected(self):
-        job = _make_job(title="Marketing Developer Tools")
-        assert is_programming_job(job) is False
+    def test_marketing_passes(self):
+        job = _make_job(title="Marketing Manager")
+        assert is_programming_job(job) is True
 
     def test_real_job_passes(self):
         job = _make_job(title="Senior Python Developer", tags=["python", "django"])
@@ -43,8 +43,26 @@ class TestScoreJob:
         assert is_programming_job(job) is True
 
     def test_no_keywords_fails(self):
-        job = _make_job(title="Office Manager")
+        job = _make_job(title="Registered Nurse")
         assert is_programming_job(job) is False
+
+    def test_non_tech_roles_pass(self):
+        examples = [
+            "HR Manager",
+            "Accountant",
+            "Office Manager",
+            "Customer Support Specialist",
+            "Product Manager",
+            "Sales Representative",
+        ]
+        for title in examples:
+            job = _make_job(title=title)
+            assert is_programming_job(job) is True, f"{title} should pass"
+
+    def test_medical_and_hardware_still_rejected(self):
+        for title in ("Registered Nurse", "Mechanical Engineer", "Physician"):
+            job = _make_job(title=title)
+            assert is_programming_job(job) is False
 
     def test_threshold_boundary(self):
         """A single exact word match should pass (score=10, threshold=10)."""
