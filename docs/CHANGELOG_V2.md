@@ -118,3 +118,19 @@ Row Level Security enabled on all tables. `anon` role limited to SELECT on `jobs
 **Backend:** psycopg2-binary, python-telegram-bot 21+, fastapi, uvicorn, slowapi, python-json-logger, python-dotenv
 
 **Frontend:** React 19, React Router, Recharts, Tailwind CSS 4, Vite, Supabase client, TypeScript 6
+
+## Post-V2 Update: Durable Delivery Queue (2026-09)
+
+Decoupled Telegram delivery from ingestion using a PostgreSQL-backed durable queue. No new infrastructure — Postgres is the queue.
+
+| | Before | After |
+|---|--------|-------|
+| **Send cap** | First 50 jobs per run sent; rest lost | No cap — every job enqueued, delivered independently |
+| **Scheduling** | One loop: fetch + send + notify every 5 min | Fetch (ingest/enqueue) every 5 min + delivery every 60s, independent and overlapping |
+| **Delivery tracking** | `jobs.sent_at` (one flag per job) | `job_deliveries` row per (job, topic) and per (job, subscriber) |
+| **Failure handling** | Failed topic = job unsent; DM failures dropped | Per-record retry with backoff (5 attempts, 30s base), stale-worker lease recovery, dead-letter + replay |
+| **DM rate limit** | Excess DMs dropped | Excess deferred back to pending, drained in later cycles |
+| **Restarts** | In-flight batch lost | Queue survives restarts (durable Postgres state) |
+| **Dead ends** | Silent drops | Explicit `dead_letter` / `skipped` states with reasons; admin alerts |
+
+New pieces: `job_deliveries` table (migration `007`), `core/delivery_queue.py`, `core/delivery_scheduler.py`, `core/subscription_matching.py`, `scripts/backfill_job_deliveries.py`, backfill of pre-queue unsent jobs, queue-aware monitoring. See `docs/ARCHITECTURE.md — Delivery Queue Operations` for the runbook.

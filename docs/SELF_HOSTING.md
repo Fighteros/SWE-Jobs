@@ -94,6 +94,37 @@ git pull
 docker compose up -d --build
 ```
 
+**Important:** the Postgres container applies `supabase/migrations/` only on the
+**first boot** of an empty data volume. When a new migration file lands, apply it
+to your existing database manually, e.g.:
+```bash
+docker compose exec -T db psql -U postgres -d postgres -f - < supabase/migrations/007_job_deliveries.sql
+```
+
+### After deploying the durable delivery queue (migration 007)
+1. Apply the migration (command above).
+2. Backfill subscriber-DM records for pre-queue jobs (idempotent, safe to re-run):
+   ```bash
+   docker compose exec -T backend python -m scripts.backfill_job_deliveries
+   ```
+3. Decide what to do with the old backlog (jobs the previous 50-job cap never
+   sent). By default they will all deliver. To skip everything older than 7 days:
+   ```bash
+   docker compose exec db psql -U postgres -d postgres -c \
+     "UPDATE job_deliveries jd SET status='skipped', dead_letter_reason='stale_backlog'
+      FROM jobs j WHERE jd.job_id=j.id AND jd.status='pending'
+      AND j.created_at < now() - interval '7 days';"
+   ```
+4. Verify both schedulers are running:
+   ```bash
+   docker compose logs --tail 50 backend | grep -E "Fetch scheduler|Delivery scheduler"
+   docker compose exec db psql -U postgres -d postgres -c \
+     "SELECT status, delivery_type, COUNT(*) FROM job_deliveries GROUP BY 1,2 ORDER BY 1;"
+   ```
+
+See [ARCHITECTURE.md — Delivery Queue Operations](ARCHITECTURE.md#delivery-queue-operations)
+for monitoring, dead-letter replay, and backlog management.
+
 ## Security notes
 - **The DB is private.** It's published only on `127.0.0.1:15432` on the server (for your
   own `psql`/GUI over an SSH tunnel). The bot uses the internal network, so you can even

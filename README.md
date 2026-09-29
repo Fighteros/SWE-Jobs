@@ -182,7 +182,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-On first boot, the custom PostgreSQL image applies every migration in `supabase/migrations/` automatically. The backend service runs FastAPI on port `8000` and the scheduled fetch loop alongside supervised Telegram bot polling.
+On first boot, the custom PostgreSQL image applies every migration in `supabase/migrations/` automatically; existing databases need new migrations applied manually (see [docs/SELF_HOSTING.md — Updating later](docs/SELF_HOSTING.md#updating-later)). The backend service runs FastAPI on port `8000` with the 5-minute fetch scheduler and the 1-minute delivery scheduler alongside supervised Telegram bot polling.
 
 ### Local Development
 

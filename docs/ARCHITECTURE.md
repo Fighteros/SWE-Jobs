@@ -235,10 +235,77 @@ Connects to Supabase directly for reads and the FastAPI backend for aggregated q
 ## Deployment
 
 - **Backend (bot + poller + fetch scheduler + delivery scheduler + API)** — self-hosted VPS, `docker compose up -d --build` (service `backend`, `restart: unless-stopped`). GitHub Actions (`deploy_backend.yml`) redeploys on push to `main`.
-- **Database migrations** — the custom PostgreSQL image applies every migration in `supabase/migrations/` automatically on first boot.
+- **Database migrations** — the custom PostgreSQL image applies every migration in `supabase/migrations/` automatically **on first boot only** (empty `pgdata` volume). Existing databases must apply new migrations manually — see [Delivery Queue Operations](#delivery-queue-operations) below.
 - **Backfill existing unsent jobs** — after migration `007_job_deliveries.sql` is applied, run `python scripts/backfill_job_deliveries.py` once to create subscriber-DM records for jobs inserted under the old 50-job cap.
 - **Telegram polling supervision** — `bot/polling.py` `PollingSupervisor` starts polling, lets PTB retry transient errors (502s, timeouts), rebuilds the poller in-process after a continuous failure streak (fresh Application + HTTP pools), and only exits for a container restart if recovery keeps failing. `/health` reports polling liveness; the backend service has a Docker healthcheck.
 - **Bot pipeline (manual)** — `main.py` one-shot ingestion workflow (`job_bot.yml`, manual dispatch only; overlaps with the server scheduler by design).
 - **Dashboard** — GitHub Pages, deployed on push to `main` (`deploy_dashboard.yml`)
 - **Job archival** — GitHub Actions periodic workflow (`archive_jobs.yml`)
 - **Database** — self-hosted Postgres container in the same Compose stack
+
+## Delivery Queue Operations
+
+### Applying migrations to an existing database
+
+The Postgres container runs init scripts only on the **first boot** of an empty `pgdata` volume. When a new migration lands, apply it manually:
+
+```bash
+docker compose exec -T db psql -U postgres -d postgres -f - < supabase/migrations/007_job_deliveries.sql
+```
+
+### Backfilling the delivery queue
+
+After applying migration 007, create subscriber-DM records for jobs inserted before the queue existed (the migration itself already backfills group-topic records):
+
+```bash
+docker compose exec -T backend python -m scripts.backfill_job_deliveries
+```
+
+Idempotent and safe to re-run. It never touches jobs with `sent_at IS NOT NULL`.
+
+### Monitoring the queue
+
+```bash
+docker compose exec db psql -U postgres -d postgres -c \
+  "SELECT status, delivery_type, COUNT(*) FROM job_deliveries GROUP BY 1,2 ORDER BY 1;"
+
+docker compose logs --tail 100 backend | grep -E "Fetch scheduler|Delivery scheduler|Delivery cycle"
+```
+
+Expected: `pending` drops as `sent` climbs. DMs are capped at `DM_MAX_PER_USER_PER_WINDOW` per user per `DM_RATE_WINDOW_SECONDS`; excess records stay `pending` and drain in later cycles.
+
+### Dead-letter handling
+
+Dead-letter records never retry automatically and trigger an admin alert after each fetch run. Inspect and replay:
+
+```bash
+docker compose exec db psql -U postgres -d postgres -c \
+  "SELECT id, delivery_type, recipient_key, attempts, dead_letter_reason, last_error
+   FROM job_deliveries WHERE status='dead_letter';"
+
+# Replay a single record (error history is preserved):
+docker compose exec db psql -U postgres -d postgres -c \
+  "UPDATE job_deliveries SET status='pending', next_attempt_at=now()
+   WHERE id=<ID> AND status='dead_letter';"
+```
+
+Programmatically: `core.delivery_queue.replay_dead_letter(delivery_id)`.
+
+### Skipping a stale backlog
+
+Jobs accumulated before the queue existed (e.g. under the old 50-job-per-run cap) can be excluded from delivery instead of flooding topics/subscribers:
+
+```bash
+docker compose exec db psql -U postgres -d postgres -c \
+  "UPDATE job_deliveries jd SET status='skipped', dead_letter_reason='stale_backlog'
+   FROM jobs j WHERE jd.job_id=j.id AND jd.status='pending'
+   AND j.created_at < now() - interval '7 days';"
+```
+
+Only `pending` records are touched; `sent`, `processing`, and `dead_letter` are left alone. Idempotent — re-run to catch records that bounce back to `pending` from in-flight batches. Reversible:
+
+```bash
+docker compose exec db psql -U postgres -d postgres -c \
+  "UPDATE job_deliveries SET status='pending', next_attempt_at=now()
+   WHERE status='skipped' AND dead_letter_reason='stale_backlog';"
+```
