@@ -13,12 +13,13 @@ def job_matches_alert(job: Job, alert: dict) -> bool:
     if not alert:
         return False
 
-    # Check topics
-    sub_topics = set(alert.get("topics", []))
-    # 'general' is a wildcard for all topics. If selected, skip topic intersection check.
-    if sub_topics and "general" not in sub_topics:
-        if not sub_topics.intersection(set(job.topics)):
-            return False
+    # An explicit general-only alert is the sole wildcard; malformed or empty
+    # topic selections must not silently become all-jobs alerts.
+    sub_topics = set(alert.get("topics") or [])
+    if not sub_topics:
+        return False
+    if sub_topics != {"general"} and not sub_topics.intersection(job.topics or []):
+        return False
 
     # Check seniority
     sub_seniority = alert.get("seniority", [])

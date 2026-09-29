@@ -198,9 +198,16 @@ async def _handle_sub_topic(query, user, context, data: str) -> None:
     topic = data.split(":")[1]
     # Store temporary selection in context.user_data
     selected = context.user_data.get("sub_topics", set())
-    if topic in selected:
+    if topic == "general":
+        if topic in selected:
+            selected.discard(topic)
+        else:
+            selected.clear()
+            selected.add(topic)
+    elif topic in selected:
         selected.discard(topic)
     else:
+        selected.discard("general")
         selected.add(topic)
     context.user_data["sub_topics"] = selected
 

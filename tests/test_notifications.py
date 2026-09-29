@@ -30,6 +30,26 @@ class TestJobMatchesAlert:
         subs = {"topics": ["mobile"]}
         assert not _job_matches_alert(_make_job(), subs)
 
+    def test_fullstack_alert_rejects_reported_non_fullstack_roles(self):
+        alert = {"topics": ["fullstack"]}
+        hr_job = _make_job(title="Human Resources Manager", topics=["hr_recruiting"])
+        qa_job = _make_job(
+            title="Quality Engineer II, Travel & Lifestyle Services", topics=["qa"]
+        )
+
+        assert not _job_matches_alert(hr_job, alert)
+        assert not _job_matches_alert(qa_job, alert)
+
+    def test_empty_topics_do_not_match_as_an_implicit_wildcard(self):
+        assert not _job_matches_alert(_make_job(), {"topics": []})
+
+    def test_general_must_be_the_only_topic_for_wildcard_matching(self):
+        assert _job_matches_alert(_make_job(topics=["hr_recruiting"]), {"topics": ["general"]})
+        assert not _job_matches_alert(
+            _make_job(topics=["hr_recruiting"]),
+            {"topics": ["general", "fullstack"]},
+        )
+
     def test_location_egypt_match(self):
         subs = {"topics": ["backend"], "locations": ["EG"]}
         assert _job_matches_alert(_make_job(country="EG"), subs)

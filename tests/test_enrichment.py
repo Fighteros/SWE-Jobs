@@ -53,9 +53,15 @@ class TestEnrichJob:
         assert "marketing_sales" in enriched.topics
 
     def test_routes_hr_recruiting(self):
-        job = _make_job(title="HR Manager", location="Remote")
+        job = _make_job(title="Human Resources Manager", location="Remote")
         enriched = enrich_job(job)
         assert "hr_recruiting" in enriched.topics
+
+    def test_routes_quality_engineer_to_qa(self):
+        job = _make_job(title="Quality Engineer II, Travel & Lifestyle Services")
+        enriched = enrich_job(job)
+        assert "qa" in enriched.topics
+        assert "general" not in enriched.topics
 
     def test_routes_finance_accounting(self):
         job = _make_job(title="Accountant", location="Remote")

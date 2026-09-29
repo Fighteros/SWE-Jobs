@@ -82,7 +82,7 @@ CHANNELS = {
         "thread_env": "TOPIC_QA",
         "name": "🧪 QA & Testing",
         "keywords": [
-            "qa engineer", "qa developer", "quality assurance",
+            "qa engineer", "qa developer", "quality engineer", "quality assurance",
             "test engineer", "sdet", "software tester",
             "automation engineer", "test automation",
             "qa analyst", "qa lead", "qa manager",
