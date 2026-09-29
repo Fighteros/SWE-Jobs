@@ -1,8 +1,10 @@
 import importlib
 import os
+from contextlib import contextmanager
 from datetime import timezone
 
 import core.config as config
+import sources.wuzzuf as wuzzuf
 from sources.wuzzuf import (
     _extract_state,
     _job_id,
@@ -69,6 +71,51 @@ def test_job_id_accepts_wuzzuf_slug_or_url():
     assert _job_id("/jobs/p/123456-senior-python-engineer") == "123456"
     assert _job_id("https://wuzzuf.net/jobs/p/123456-senior-python-engineer") == "123456"
     assert _job_id("/jobs/p/not-a-number") == ""
+
+
+def test_fetch_accepts_absolute_job_links_and_stops_on_repeated_page(monkeypatch):
+    html = HTML.replace(
+        'href="/jobs/p/123456-senior-python-engineer"',
+        'href="https://wuzzuf.net/jobs/p/123456-senior-python-engineer"',
+    )
+
+    class Page:
+        url = ""
+
+        def __init__(self):
+            self.visited = []
+            self.waited_for = []
+
+        def set_default_timeout(self, timeout):
+            pass
+
+        def goto(self, url, **kwargs):
+            self.visited.append(url)
+
+        def wait_for_timeout(self, timeout):
+            pass
+
+        def wait_for_selector(self, selector, **kwargs):
+            self.waited_for.append(selector)
+
+        def content(self):
+            return html
+
+    page = Page()
+
+    @contextmanager
+    def fake_browser_page(**kwargs):
+        yield page
+
+    monkeypatch.setattr(wuzzuf, "get_browser_page", fake_browser_page)
+    monkeypatch.setattr(wuzzuf, "SEARCHES", [{"q": "python", "a": "hpb"}])
+    monkeypatch.setattr(wuzzuf, "WUZZUF_MAX_PAGES", 3)
+
+    jobs = wuzzuf.fetch_wuzzuf()
+
+    assert [job.title for job in jobs] == ["Senior Python Engineer"]
+    assert len(page.visited) == 2
+    assert page.waited_for == ['a[href*="/jobs/p/"]'] * 2
 
 
 def test_blank_profile_env_uses_persistent_default(monkeypatch):

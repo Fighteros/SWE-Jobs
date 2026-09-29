@@ -14,7 +14,7 @@ import re
 import time
 from datetime import datetime, timezone
 from core.models import Job
-from sources.playwright_utils import get_browser_page
+from sources.playwright_utils import get_browser_page, normalize_cookies
 
 log = logging.getLogger(__name__)
 
@@ -79,17 +79,10 @@ def _load_cookies(page, cookies_file: str):
         with open(cookies_file, "r") as f:
             cookies = json.load(f)
         # Normalize to Playwright cookie format
-        pw_cookies = []
-        for c in cookies:
-            pw_cookies.append({
-                "name": c.get("name", ""),
-                "value": c.get("value", ""),
-                "domain": c.get("domain", ".x.com"),
-                "path": c.get("path", "/"),
-                "secure": c.get("secure", True),
-                "httpOnly": c.get("httpOnly", False),
-                "sameSite": c.get("sameSite", "None"),
-            })
+        pw_cookies = normalize_cookies(cookies, ".x.com")
+        if not pw_cookies:
+            log.warning("X: cookie file contains no usable cookies.")
+            return
         page.context.add_cookies(pw_cookies)
         log.info("X: loaded cookies from file.")
     except Exception as e:
@@ -278,12 +271,11 @@ def _parse_tweet(tweet) -> Job | None:
 
 def _extract_title(lines: list[str], text_lower: str) -> str:
     """Try to extract a job title from tweet lines."""
-    # Clean hashtags and mentions from lines
-    # Only remove hashtags/mentions if they are at the end or standalone
+    # Remove every leading hashtag/mention so exports with multiple tags do not
+    # leak one into the title fallback.
     clean_lines = []
     for l in lines:
-        # Remove standalone hashtags/mentions
-        l = re.sub(r'^[#@]\S+\s*', '', l)
+        l = re.sub(r'^(?:[#@]\S+\s*)+', '', l)
         l = re.sub(r'\s*[#@]\S+$', '', l)
         l = l.strip()
         if l:
@@ -294,8 +286,8 @@ def _extract_title(lines: list[str], text_lower: str) -> str:
 
     # Common title patterns
     patterns = [
-        r'(?:hiring|looking for|seeking)\s*(?:a|an)?\s*([A-Z][^!\n\.,]{5,80})(?:\s+at|\s+for|\n|$|!|\.|,)',
-        r'(?:position|role|opening|needed):\s*([A-Z][^!\n\.,]{5,80})(?:\n|$|!|\.|,)',
+        r'(?:hiring|looking for|seeking)\s*(?:a|an)?\s*([A-Z][^!\n\.,]{5,80}?)(?:\s+at|\s+for|\n|$|!|\.|,)',
+        r'(?:position|role|opening|needed):\s*([A-Z][^!\n\.,]{5,80}?)(?:\n|$|!|\.|,)',
     ]
     
     # Try case-sensitive patterns first for better quality
@@ -305,7 +297,12 @@ def _extract_title(lines: list[str], text_lower: str) -> str:
             return match.group(1).strip()
 
     # Keywords that suggest a job title line
-    role_keywords = ["engineer", "developer", "architect", "scientist", "tester", "sre", "devops", "lead", "staff", "principal"]
+    role_keywords = [
+        "engineer", "engineering", "developer", "development", "architect",
+        "scientist", "analyst", "tester", "sre", "devops", "backend",
+        "frontend", "full stack", "mobile", "flutter", "cloud", "data",
+        "qa", "security", "lead", "staff", "principal",
+    ]
     
     role_lines = []
     for line in clean_lines:
@@ -327,11 +324,6 @@ def _extract_title(lines: list[str], text_lower: str) -> str:
     
     if role_lines:
         return role_lines[0] # Return the first matching line
-
-    # Fallback
-    for line in clean_lines[:2]:
-        if 5 < len(line) < 80 and not any(w in line.lower() for w in ["job alert", "new job"]):
-            return line
 
     return ""
 

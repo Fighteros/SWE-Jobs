@@ -63,7 +63,7 @@ def fetch_wuzzuf() -> list[Job]:
                         query = urlencode({"q": params["q"], "a": params["a"], "start": page_number})
                         page.goto(f"{BASE_URL}?{query}", wait_until="domcontentloaded", timeout=30_000)
                         page.wait_for_timeout(1500)
-                        page.wait_for_selector("a[href^='/jobs/p/']", timeout=15_000)
+                        page.wait_for_selector('a[href*="/jobs/p/"]', timeout=15_000)
                         parsed = _parse_html(page.content())
                     except Exception as exc:
                         log.warning("Wuzzuf: error on search '%s' page %s: %s", params["q"], page_number, exc)

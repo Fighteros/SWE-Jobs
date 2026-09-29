@@ -12,8 +12,9 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 from core.models import Job
-from sources.playwright_utils import get_browser_page
+from sources.playwright_utils import get_browser_page, normalize_cookies
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,10 @@ SEARCH_QUERIES = [
 
 MAX_SCROLLS = 3
 SCROLL_PAUSE = 2
+POST_SELECTOR = (
+    'div.feed-shared-update-v2, div.occludable-update, '
+    'div[data-urn^="urn:li:activity:"]'
+)
 
 
 def fetch_linkedin_posts() -> list[Job]:
@@ -83,17 +88,10 @@ def _load_cookies(page, cookies_file: str):
         page.goto("https://www.linkedin.com", wait_until="domcontentloaded")
         with open(cookies_file, "r") as f:
             cookies = json.load(f)
-        pw_cookies = []
-        for c in cookies:
-            pw_cookies.append({
-                "name": c.get("name", ""),
-                "value": c.get("value", ""),
-                "domain": c.get("domain", ".linkedin.com"),
-                "path": c.get("path", "/"),
-                "secure": c.get("secure", True),
-                "httpOnly": c.get("httpOnly", False),
-                "sameSite": c.get("sameSite", "None"),
-            })
+        pw_cookies = normalize_cookies(cookies, ".linkedin.com")
+        if not pw_cookies:
+            log.warning("LinkedIn Posts: cookie file contains no usable cookies.")
+            return
         page.context.add_cookies(pw_cookies)
         log.info("LinkedIn Posts: loaded cookies from file.")
         # Navigate again to apply cookies
@@ -106,15 +104,19 @@ def _load_cookies(page, cookies_file: str):
 def _scrape_search(page, query: str) -> list[Job]:
     """Run a single search query and extract job-like posts."""
     jobs = []
-    encoded = query.replace(" ", "%20").replace("#", "%23")
-    url = f"{SEARCH_BASE}?keywords={encoded}&sortBy=%22date_posted%22"
+    url = f"{SEARCH_BASE}?{urlencode({'keywords': query, 'sortBy': 'date_posted'})}"
 
     page.goto(url, wait_until="domcontentloaded")
+
+    current_url = page.url.lower()
+    if any(marker in current_url for marker in ("/login", "/checkpoint", "/authwall")):
+        log.warning("LinkedIn Posts: redirected to an authentication checkpoint.")
+        return jobs
 
     # Wait for feed posts to load
     try:
         page.wait_for_selector(
-            'div.feed-shared-update-v2, div.update-components-text',
+            f'{POST_SELECTOR}, div.update-components-text',
             timeout=15_000,
         )
     except Exception:
@@ -127,7 +129,7 @@ def _scrape_search(page, query: str) -> list[Job]:
         time.sleep(SCROLL_PAUSE)
 
     # Extract all post containers
-    posts = page.query_selector_all('div.feed-shared-update-v2')
+    posts = page.query_selector_all(POST_SELECTOR)
 
     for post in posts:
         try:
@@ -173,7 +175,7 @@ def _parse_post(post) -> Job | None:
 
     # Get post permalink
     post_url = ""
-    link_el = post.query_selector('a.app-aware-link[href*="/feed/update/"]')
+    link_el = post.query_selector('a[href*="/feed/update/"], a[href*="/posts/"]')
     if link_el:
         href = link_el.get_attribute("href") or ""
         post_url = href.split("?")[0] if href else ""
