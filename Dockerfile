@@ -15,6 +15,7 @@ COPY core/ core/
 COPY api/ api/
 COPY bot/ bot/
 COPY sources/ sources/
+COPY scripts/ scripts/
 COPY main.py server.py ./
 
 EXPOSE 8000
