@@ -10,6 +10,7 @@ Usage:
 """
 
 import logging
+import re
 from pathlib import Path
 from contextlib import contextmanager
 from playwright.sync_api import sync_playwright
@@ -18,6 +19,38 @@ log = logging.getLogger(__name__)
 
 # Default timeout for page loads (ms)
 PAGE_TIMEOUT = 30_000
+
+
+def normalize_cookies(cookies, default_domain: str) -> list[dict]:
+    """Convert common browser-export cookie formats to Playwright cookies."""
+    if isinstance(cookies, dict):
+        cookies = cookies.get("cookies", [])
+    if not isinstance(cookies, list):
+        return []
+
+    same_site_values = {
+        "strict": "Strict",
+        "lax": "Lax",
+        "none": "None",
+        "no_restriction": "None",
+    }
+    result = []
+    for cookie in cookies:
+        if not isinstance(cookie, dict) or not cookie.get("name") or cookie.get("value") is None:
+            continue
+        item = {
+            "name": str(cookie["name"]),
+            "value": str(cookie["value"]),
+            "domain": cookie.get("domain") or default_domain,
+            "path": cookie.get("path") or "/",
+            "secure": bool(cookie.get("secure", True)),
+            "httpOnly": bool(cookie.get("httpOnly", False)),
+        }
+        same_site = re.sub(r"[\s-]+", "_", str(cookie.get("sameSite") or "")).lower()
+        if same_site in same_site_values:
+            item["sameSite"] = same_site_values[same_site]
+        result.append(item)
+    return result
 
 
 @contextmanager

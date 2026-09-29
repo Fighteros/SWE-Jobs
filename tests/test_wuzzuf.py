@@ -1,8 +1,6 @@
-import importlib
-import os
 from datetime import timezone
 
-import core.config as config
+import sources.wuzzuf as wuzzuf
 from sources.wuzzuf import (
     _extract_state,
     _job_id,
@@ -65,14 +63,57 @@ def test_timestamp_and_relative_date_parsing():
     assert _parse_relative_date("2 days ago") is not None
 
 
-def test_job_id_accepts_wuzzuf_slug_or_url():
+def test_job_id_accepts_numeric_and_alphanumeric_wuzzuf_ids():
     assert _job_id("/jobs/p/123456-senior-python-engineer") == "123456"
     assert _job_id("https://wuzzuf.net/jobs/p/123456-senior-python-engineer") == "123456"
-    assert _job_id("/jobs/p/not-a-number") == ""
+    assert _job_id("/jobs/p/c3ycwyjhbpx6-senior-quality-engineer") == "c3ycwyjhbpx6"
+    assert _job_id("/jobs/p/-missing-id") == ""
 
 
-def test_blank_profile_env_uses_persistent_default(monkeypatch):
-    monkeypatch.setenv("WUZZUF_PROFILE_DIR", "")
-    importlib.reload(config)
-    assert config.WUZZUF_PROFILE_DIR == ".wuzzuf-profile"
-    monkeypatch.setenv("WUZZUF_PROFILE_DIR", os.getenv("WUZZUF_PROFILE_DIR", ""))
+def test_fetch_uses_public_category_pages_and_deduplicates(monkeypatch):
+    html = HTML.replace(
+        'href="/jobs/p/123456-senior-python-engineer"',
+        'href="https://wuzzuf.net/jobs/p/123456-senior-python-engineer"',
+    )
+    requested_urls = []
+
+    def fake_get_text(url):
+        requested_urls.append(url)
+        return html
+
+    monkeypatch.setattr(wuzzuf, "get_text", fake_get_text)
+    monkeypatch.setattr(wuzzuf, "SEARCH_URLS", ["https://wuzzuf.net/a/Software-Development-Jobs-in-Egypt"])
+    monkeypatch.setattr(wuzzuf, "WUZZUF_MAX_PAGES", 2)
+
+    jobs = wuzzuf.fetch_wuzzuf()
+
+    assert [job.title for job in jobs] == ["Senior Python Engineer"]
+    assert requested_urls == [
+        "https://wuzzuf.net/a/Software-Development-Jobs-in-Egypt",
+        "https://wuzzuf.net/a/Software-Development-Jobs-in-Egypt?start=20",
+    ]
+
+
+def test_parse_alphanumeric_wuzzuf_ids_and_clean_card_title():
+    html = """
+    <div class="job-card">
+      <h2><style>.title{color:red}</style>
+        <a href="/jobs/p/abc123-Backend-Developer">Backend Developer</a>
+      </h2>
+      <a href="/jobs/careers/Acme-Egypt-123">Acme -</a>
+      <span>Giza, Egypt</span><span>2 days ago</span>
+      <span>Full Time</span><span>Remote</span>
+      <a>IT/Software Development</a><a>Python</a>
+    </div>
+    """
+
+    jobs = wuzzuf._parse_html(html)
+
+    assert len(jobs) == 1
+    assert wuzzuf._job_id(jobs[0].url) == "abc123"
+    assert jobs[0].title == "Backend Developer"
+    assert jobs[0].company == "Acme"
+    assert jobs[0].location == "Giza, Egypt"
+    assert jobs[0].posted_at is not None
+    assert jobs[0].is_remote
+    assert "Python" in jobs[0].tags

@@ -7,11 +7,13 @@ are not tested here as they require a live browser.
 import pytest
 from datetime import datetime, timezone
 
+import sources.x_jobs as x_jobs
 from sources.x_jobs import (
     _extract_title,
     _extract_location,
     _extract_salary,
     _parse_date,
+    _scrape_search,
 )
 
 
@@ -90,6 +92,17 @@ class TestExtractTitle:
         assert title
         # Fallback strips #hashtags and @mentions
         assert "#" not in title
+
+    def test_strips_multiple_leading_hashtags(self):
+        text = "#python #django Hiring a Backend Developer for our team"
+        lines = [line.strip() for line in text.split("\n") if line.strip()]
+        title = _extract_title(lines, text.lower())
+        assert "#" not in title
+        assert "backend developer" in title.lower()
+
+    def test_rejects_non_job_title_fallback(self):
+        text = "Nice day"
+        assert _extract_title([text], text.lower()) == ""
 
 
 # ── _extract_location ───────────────────────────────────────
@@ -203,3 +216,89 @@ class TestParseDate:
 
     def test_garbage_input(self):
         assert _parse_date("12345") is None
+
+
+class _TextElement:
+    def __init__(self, text):
+        self.text = text
+
+    def inner_text(self):
+        return self.text
+
+
+class _LinkElement:
+    def __init__(self, href):
+        self.href = href
+
+    def get_attribute(self, name):
+        return self.href if name == "href" else None
+
+    def inner_text(self):
+        return ""
+
+
+class _NameElement:
+    def query_selector(self, selector):
+        return _TextElement("Acme")
+
+
+class _TweetElement:
+    def query_selector(self, selector):
+        if selector == 'div[data-testid="tweetText"]':
+            return _TextElement(
+                "We're hiring a Senior Backend Developer for our team! Apply now."
+            )
+        if selector == 'div[data-testid="User-Name"]':
+            return _NameElement()
+        return None
+
+    def query_selector_all(self, selector):
+        if selector == 'a[href*="/status/"]':
+            return [_LinkElement("/acme/status/123")]
+        return []
+
+
+class _SearchPage:
+    def __init__(self, url="https://x.com/search"):
+        self.url = url
+        self.mouse = self
+        self.waited_for = []
+        self.searched_url = ""
+
+    def goto(self, url, **kwargs):
+        self.searched_url = url
+        self.url = url
+
+    def wait_for_timeout(self, timeout):
+        pass
+
+    def wait_for_selector(self, selector, **kwargs):
+        self.waited_for.append(selector)
+
+    def wheel(self, *args):
+        pass
+
+    def query_selector_all(self, selector):
+        assert selector == 'article[data-testid="tweet"]'
+        return [_TweetElement()]
+
+
+def test_search_parses_tweets_from_results(monkeypatch):
+    monkeypatch.setattr(x_jobs, "MAX_SCROLLS", 0)
+    page = _SearchPage()
+
+    jobs = _scrape_search(page, "#hiring backend developer -is:reply")
+
+    assert len(jobs) == 1
+    assert jobs[0].source == "x"
+    assert jobs[0].title == "Senior Backend Developer"
+    assert jobs[0].url == "https://x.com/acme/status/123"
+    assert page.waited_for == ['article[data-testid="tweet"]']
+
+
+def test_search_stops_when_x_redirects_to_login(monkeypatch):
+    page = _SearchPage(url="https://x.com/i/flow/login")
+    page.goto = lambda *args, **kwargs: None
+
+    assert _scrape_search(page, "software engineer") == []
+    assert page.waited_for == []
