@@ -94,9 +94,5 @@ DELIVERY_MAX_CYCLE_SECONDS: int = int(os.getenv("DELIVERY_MAX_CYCLE_SECONDS", "5
 DM_MAX_PER_USER_PER_WINDOW: int = int(os.getenv("DM_MAX_PER_USER_PER_WINDOW", "20"))
 DM_RATE_WINDOW_SECONDS: int = int(os.getenv("DM_RATE_WINDOW_SECONDS", "3600"))
 
-# Wuzzuf browser state. A persistent profile lets the scraper retain a
-# Cloudflare clearance and avoids creating a brand-new browser identity on
-# every scheduled run.
-WUZZUF_PROFILE_DIR: str = os.getenv("WUZZUF_PROFILE_DIR") or ".wuzzuf-profile"
-WUZZUF_HEADLESS: bool = os.getenv("WUZZUF_HEADLESS", "true").lower() not in {"0", "false", "no"}
+# Number of 20-job pages fetched per Wuzzuf category.
 WUZZUF_MAX_PAGES: int = int(os.getenv("WUZZUF_MAX_PAGES", "3"))
