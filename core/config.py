@@ -78,11 +78,21 @@ ADMIN_TELEGRAM_ID: str = os.getenv("ADMIN_TELEGRAM_ID", "")
 # Misc
 # =============================================================================
 
-MAX_JOBS_PER_RUN: int = 50       # safety cap per run
 REQUEST_TIMEOUT: int = 15        # seconds for HTTP requests
 SEED_MODE_ENV: str = "SEED_MODE" # env var name checked to force seed mode
 SEEN_JOBS_FILE: str = "seen_jobs.json"
 FETCH_INTERVAL_MINUTES: int = int(os.getenv("FETCH_INTERVAL_MINUTES", "5"))
+
+# Delivery queue settings — all have safe defaults if unset.
+DELIVERY_INTERVAL_SECONDS: int = int(os.getenv("DELIVERY_INTERVAL_SECONDS", "60"))
+DELIVERY_BATCH_SIZE: int = int(os.getenv("DELIVERY_BATCH_SIZE", "50"))
+DELIVERY_MAX_ATTEMPTS: int = int(os.getenv("DELIVERY_MAX_ATTEMPTS", "5"))
+DELIVERY_RETRY_BASE_SECONDS: int = int(os.getenv("DELIVERY_RETRY_BASE_SECONDS", "30"))
+DELIVERY_PROCESSING_LEASE_SECONDS: int = int(os.getenv("DELIVERY_PROCESSING_LEASE_SECONDS", "600"))
+DELIVERY_IDLE_SLEEP_SECONDS: int = int(os.getenv("DELIVERY_IDLE_SLEEP_SECONDS", "10"))
+DELIVERY_MAX_CYCLE_SECONDS: int = int(os.getenv("DELIVERY_MAX_CYCLE_SECONDS", "50"))
+DM_MAX_PER_USER_PER_WINDOW: int = int(os.getenv("DM_MAX_PER_USER_PER_WINDOW", "20"))
+DM_RATE_WINDOW_SECONDS: int = int(os.getenv("DM_RATE_WINDOW_SECONDS", "3600"))
 
 # Wuzzuf browser state. A persistent profile lets the scraper retain a
 # Cloudflare clearance and avoids creating a brand-new browser identity on

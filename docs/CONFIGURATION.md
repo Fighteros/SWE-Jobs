@@ -86,9 +86,32 @@ Sources that don't require keys: Remotive, Himalayas, Jobicy, RemoteOK, Arbeitno
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ADMIN_TELEGRAM_ID` | Your Telegram user ID (for alert DMs) | — |
-| `SEED_MODE` | `true` = register jobs without sending to Telegram | `false` |
+| `SEED_MODE` | `true` = register jobs without creating live deliveries | `false` |
 
 Seed mode is useful for the first run — it populates the database without flooding the Telegram group with existing jobs.
+
+## Delivery Queue
+
+The delivery queue is stored in PostgreSQL; no Redis/RabbitMQ/SQS is required.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FETCH_INTERVAL_MINUTES` | How often the fetch/ingestion pipeline runs | `5` |
+| `DELIVERY_INTERVAL_SECONDS` | How often the delivery scheduler wakes up | `60` |
+| `DELIVERY_BATCH_SIZE` | Records claimed per delivery batch | `50` |
+| `DELIVERY_MAX_ATTEMPTS` | Maximum delivery attempts before dead-letter | `5` |
+| `DELIVERY_RETRY_BASE_SECONDS` | Base delay for exponential backoff | `30` |
+| `DELIVERY_PROCESSING_LEASE_SECONDS` | How long a `processing` record can sit before recovery | `600` |
+| `DELIVERY_IDLE_SLEEP_SECONDS` | How long the delivery scheduler sleeps when no work is found | `10` |
+| `DELIVERY_MAX_CYCLE_SECONDS` | Runtime budget for one delivery cycle | `50` |
+| `DM_MAX_PER_USER_PER_WINDOW` | Max subscriber DMs per user per window | `20` |
+| `DM_RATE_WINDOW_SECONDS` | Sliding window for DM rate limiting | `3600` |
+
+All values read from the environment with the stated fallback if unset.
+
+Backoff sequence (retryable failures): 30s, 60s, 120s, 240s (capped at 24h).
+
+Permanent failures (dead-letter immediately): bot blocked, forbidden, chat/user not found, bot cannot initiate conversation, missing/invalid topic config, invalid recipient.
 
 ## GitHub Actions Secrets
 
@@ -116,10 +139,10 @@ These are hardcoded in the source but can be adjusted:
 
 | Constant | Value | Location | Description |
 |----------|-------|----------|-------------|
-| `MAX_JOBS_PER_RUN` | 50 | `main.py` | Safety cap per execution |
 | `REQUEST_TIMEOUT` | 15s | `main.py` | HTTP request timeout |
-| `TELEGRAM_SEND_DELAY` | 3s | `main.py` | Delay between Telegram messages |
+| `TELEGRAM_SEND_DELAY` | 3s | `bot/sender.py` | Delay between Telegram messages |
 | `SCORE_THRESHOLD` | 10 | `core/keywords.py` | Minimum keyword score to pass filter |
 | `CIRCUIT_OPEN_FAILURES` | 3 | `core/circuit_breaker.py` | Failures before circuit opens |
 | `FUZZY_THRESHOLD` | 0.7 | `core/dedup.py` | pg_trgm similarity threshold |
-| `MAX_DMS_PER_USER_PER_HOUR` | 20 | `bot/notifications.py` | DM rate limit per user |
+
+The old `MAX_JOBS_PER_RUN` cap has been removed; all inserted jobs are now enqueued in the durable delivery queue and delivered independently.

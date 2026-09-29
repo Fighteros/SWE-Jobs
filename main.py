@@ -1,18 +1,19 @@
 """
 Programming Jobs Bot v2 — Main entry point.
-Orchestrates: fetch (with circuit breaker) -> enrich -> filter -> dedup -> insert -> send -> notify -> track.
+Orchestrates: fetch (with circuit breaker) -> enrich -> filter -> dedup -> insert -> enqueue.
+Telegram delivery is handled independently by the delivery scheduler.
 """
 
 import os
-import sys
 import asyncio
 import logging
 import time
 from datetime import datetime, timezone
 
 from core.logging_config import setup_logging
-from core.config import MAX_JOBS_PER_RUN, SEED_MODE_ENV, TELEGRAM_BOT_TOKEN
+from core.config import SEED_MODE_ENV, TELEGRAM_BOT_TOKEN
 from core import db_async as adb
+from core.delivery_queue import enqueue_job_deliveries
 from core.enrichment import enrich_job
 from core.filtering import filter_jobs
 from core.dedup import deduplicate_batch
@@ -25,7 +26,7 @@ log = logging.getLogger("main")
 
 async def main():
     start = time.time()
-    log.info("Programming Jobs Bot v2 — Starting run")
+    log.info("Programming Jobs Bot v2 — Starting ingestion run")
 
     # ── 1. Start run tracking ──────────────────────────────
     run_id = await adb.start_run()
@@ -34,7 +35,7 @@ async def main():
 
     is_seed = os.getenv(SEED_MODE_ENV, "").lower() in ("1", "true", "yes")
     if is_seed:
-        log.info("SEED MODE: will register all jobs without sending")
+        log.info("SEED MODE: will register all jobs without creating live deliveries")
 
     # ── 2. Fetch from all sources in parallel ────────────────
     # Limit concurrency for API-heavy sources that share rate limits.
@@ -85,7 +86,7 @@ async def main():
     log.info(f"Fuzzy dedup: {fuzzy_dupes} duplicates removed, {len(non_dupes)} remaining")
 
     inserted_rows = await adb.insert_jobs_batch(non_dupes)
-    # Build (Job, db_id) list for sending
+    # Build (Job, db_id) list for enqueueing deliveries
     now = datetime.now(timezone.utc)
     uid_to_job = {job.unique_id: job for job in non_dupes}
     inserted_jobs = []
@@ -96,44 +97,28 @@ async def main():
         inserted_jobs.append((job, row["id"]))
     log.info(f"Inserted: {len(inserted_jobs)} jobs")
 
-    # ── 7. Send or seed ─────────────────────────────────────
-    jobs_sent = 0
-    jobs_attempted = 0
-    if is_seed:
-        log.info(f"Seed mode: {len(inserted_jobs)} jobs registered (no sending)")
+    # ── 7. Enqueue deliveries (never send here) ─────────────
+    delivery_stats = {"group_topic_queued": 0, "subscriber_dm_queued": 0}
+    if inserted_jobs:
+        if is_seed:
+            log.info(f"Seed mode: marking {len(inserted_jobs)} jobs as skipped deliveries")
+        delivery_stats = await asyncio.to_thread(
+            enqueue_job_deliveries, inserted_jobs, is_seed=is_seed
+        )
+        log.info(
+            f"Enqueued deliveries: {delivery_stats['group_topic_queued']} group-topic, "
+            f"{delivery_stats['subscriber_dm_queued']} subscriber-DM"
+        )
     else:
-        to_send = inserted_jobs[:MAX_JOBS_PER_RUN]
-        jobs_attempted = len(to_send)
-        if len(inserted_jobs) > MAX_JOBS_PER_RUN:
-            log.warning(f"Capped to {MAX_JOBS_PER_RUN} (had {len(inserted_jobs)})")
-
-        if to_send and TELEGRAM_BOT_TOKEN:
-            from telegram import Bot
-            from bot.sender import send_jobs
-            from bot.notifications import notify_subscribers
-
-            bot = Bot(token=TELEGRAM_BOT_TOKEN)
-            async with bot:
-                log.info(f"Sending {jobs_attempted} jobs to Telegram...")
-                jobs_sent = await send_jobs(bot, to_send)
-                log.info(f"Delivered {jobs_sent}/{jobs_attempted} jobs")
-
-                # Notify subscribers
-                dm_count = await notify_subscribers(bot, to_send)
-                log.info(f"Sent {dm_count} DM alerts")
-        elif not TELEGRAM_BOT_TOKEN:
-            log.warning("No TELEGRAM_BOT_TOKEN — skipping send")
-        else:
-            log.info("No new jobs to send")
+        log.info("No new jobs to enqueue")
 
     # ── 8. Finish run tracking ──────────────────────────────
-    source_stats["_jobs_attempted"] = jobs_attempted
     await adb.finish_run(
         run_id,
         jobs_fetched=len(all_jobs),
         jobs_filtered=len(filtered),
         jobs_new=len(new_jobs),
-        jobs_sent=jobs_sent,
+        jobs_sent=delivery_stats.get("group_topic_queued", 0),
         source_stats=source_stats,
         errors=errors,
     )
@@ -150,7 +135,12 @@ async def main():
             log.warning(f"Alert check failed: {e}")
 
     elapsed = time.time() - start
-    log.info(f"Run complete in {elapsed:.1f}s. Fetched={len(all_jobs)} Filtered={len(filtered)} New={len(new_jobs)} Sent={jobs_sent}")
+    log.info(
+        f"Ingestion run complete in {elapsed:.1f}s. "
+        f"Fetched={len(all_jobs)} Filtered={len(filtered)} New={len(new_jobs)} "
+        f"QueuedGroup={delivery_stats.get('group_topic_queued', 0)} "
+        f"QueuedDM={delivery_stats.get('subscriber_dm_queued', 0)}"
+    )
 
 
 if __name__ == "__main__":
