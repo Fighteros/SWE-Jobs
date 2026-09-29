@@ -56,32 +56,29 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
 
         # Alert: run took too long
         if run["finished_at"] and run["started_at"]:
-            # Duration check via DB
             duration = await adb._fetchone(
                 "SELECT EXTRACT(EPOCH FROM (%s - %s)) as seconds",
                 (run["finished_at"], run["started_at"]),
             )
             if duration and duration["seconds"] > 300:
                 msg = f"⏰ <b>ALERT: Slow run</b>\nRun took {int(duration['seconds'])}s (threshold: 300s)"
-                # await send_admin_alert(bot, msg)
-                # alerts.append(msg)
                 log.info(msg)
 
-        # Alert: Telegram send success rate below 80%
-        # jobs_sent     = jobs delivered to at least one topic
-        # jobs_attempted = jobs we actually tried to send (from source_stats)
+        # Alert: low queue insertion rate
+        # jobs_sent is reused to store group-topic deliveries queued this run.
         stats = run.get("source_stats") or {}
         if isinstance(stats, str):
             import json as _json
             stats = _json.loads(stats)
         jobs_attempted = stats.get("_jobs_attempted", 0)
+        jobs_queued = run.get("jobs_sent", 0)
         if jobs_attempted > 0:
-            success_rate = run["jobs_sent"] / jobs_attempted
-            if success_rate < 0.8:
+            queue_rate = jobs_queued / jobs_attempted
+            if queue_rate < 0.8:
                 msg = (
-                    f"📉 <b>ALERT: Low send rate</b>\n"
-                    f"Delivered {run['jobs_sent']}/{jobs_attempted} jobs "
-                    f"({success_rate:.0%} success rate)"
+                    f"📉 <b>ALERT: Low queue rate</b>\n"
+                    f"Queued {jobs_queued}/{jobs_attempted} jobs "
+                    f"({queue_rate:.0%} queue rate)"
                 )
                 await send_admin_alert(bot, msg)
                 alerts.append(msg)
@@ -92,6 +89,18 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
         )
         for row in broken:
             msg = f"⚡ <b>ALERT: Circuit breaker open</b>\nSource: {_escape_html(row['source'])}"
+            await send_admin_alert(bot, msg)
+            alerts.append(msg)
+
+        # Alert: dead-letter records exist
+        dead_letter_count = await adb._fetchone(
+            "SELECT COUNT(*) as count FROM job_deliveries WHERE status = 'dead_letter'"
+        )
+        if dead_letter_count and dead_letter_count["count"] > 0:
+            msg = (
+                f"💀 <b>ALERT: Dead-letter deliveries</b>\n"
+                f"{dead_letter_count['count']} record(s) require attention"
+            )
             await send_admin_alert(bot, msg)
             alerts.append(msg)
 
@@ -107,14 +116,24 @@ async def send_daily_digest(bot: Bot) -> bool:
     Call this once per day (e.g. at midnight via a scheduled GitHub Actions job).
     """
     try:
-        # Jobs sent today
-        today_stats = await adb._fetchone(
-            """SELECT
-                 COUNT(*) as total,
-                 COUNT(CASE WHEN sent_at IS NOT NULL THEN 1 END) as sent
+        # Jobs found today
+        today_jobs = await adb._fetchone(
+            """SELECT COUNT(*) as total
                FROM jobs
                WHERE created_at > now() - make_interval(days := 1)"""
         )
+
+        # Delivery stats from the durable queue
+        delivery_stats = await adb._fetchall(
+            """SELECT status, COUNT(*) as count
+               FROM job_deliveries
+               WHERE created_at > now() - make_interval(days := 1)
+                  OR (sent_at IS NOT NULL AND sent_at > now() - make_interval(days := 1))
+                  OR (failed_at IS NOT NULL AND failed_at > now() - make_interval(days := 1))
+               GROUP BY status"""
+        )
+
+        status_counts = {row["status"]: row["count"] for row in delivery_stats}
 
         # Source health
         sources = await adb._fetchall(
@@ -132,8 +151,12 @@ async def send_daily_digest(bot: Bot) -> bool:
 
         lines = [
             "📊 <b>Daily Digest</b>\n",
-            f"Jobs found today: {today_stats['total']}",
-            f"Jobs sent today: {today_stats['sent']}",
+            f"Jobs found today: {today_jobs['total']}",
+            f"Group+DM sent today: {status_counts.get('sent', 0)}",
+            f"Pending deliveries: {status_counts.get('pending', 0)}",
+            f"Retrying (processing): {status_counts.get('processing', 0)}",
+            f"Dead-letter: {status_counts.get('dead_letter', 0)}",
+            f"Skipped: {status_counts.get('skipped', 0)}",
             f"Runs with errors: {errors['count']}\n",
             "<b>Source Health:</b>",
         ]
@@ -150,3 +173,31 @@ async def send_daily_digest(bot: Bot) -> bool:
     except Exception as e:
         log.error(f"Daily digest failed: {e}")
         return False
+
+
+async def get_queue_stats() -> dict:
+    """Return current delivery-queue statistics."""
+    rows = await adb._fetchall(
+        """SELECT status, delivery_type, COUNT(*) as count
+           FROM job_deliveries
+           GROUP BY status, delivery_type"""
+    )
+
+    stats = {
+        "pending": 0,
+        "processing": 0,
+        "sent": 0,
+        "dead_letter": 0,
+        "skipped": 0,
+    }
+
+    for row in rows:
+        status = row["status"]
+        d_type = row["delivery_type"]
+        count = row["count"]
+        stats[status] = stats.get(status, 0) + count
+        if d_type not in stats:
+            stats[d_type] = {"pending": 0, "processing": 0, "sent": 0, "dead_letter": 0, "skipped": 0}
+        stats[d_type][status] = stats[d_type].get(status, 0) + count
+
+    return stats

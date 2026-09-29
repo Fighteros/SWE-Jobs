@@ -155,7 +155,11 @@ class _FakeBot:
 
 class TestNotifySubscribersPerAlert:
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     def _user(self, uid=1, telegram_id=42):
         return {"id": uid, "telegram_id": telegram_id, "notify_dm": True}

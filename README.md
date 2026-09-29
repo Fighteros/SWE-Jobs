@@ -6,6 +6,8 @@ A production-grade job aggregation platform that collects software engineering a
 
 - **30+ job sources** — remote boards, regional boards, ATS job boards, and social/job-network scrapers
 - **21 Telegram topics** — tech roles, geo-specific channels, and non-tech business roles
+- **Durable delivery queue** — every inserted job gets independent group-topic and subscriber-DM records in PostgreSQL; delivery survives restarts, rate limits defer work instead of dropping it, and a dead-letter state handles permanent failures
+- **Independent fetch & delivery schedules** — ingestion runs every 5 minutes, delivery drains the queue every minute; they can overlap safely
 - **Smart routing** — each job is auto-routed to all matching topics
 - **Weighted keyword filtering** — include/exclude keyword scoring with configurable threshold
 - **Geo-intelligence** — Egypt & Saudi Arabia get all local jobs; rest of world gets remote-only
@@ -22,28 +24,34 @@ A production-grade job aggregation platform that collects software engineering a
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Docker Compose host (VPS)                                  │
-│                                                             │
-│  ┌─────────────┐   ┌───────────────────────────────────┐   │
-│  │ PostgreSQL  │   │  backend service (server.py)      │   │
-│  │   (db)      │◄──┤  ├── FastAPI /api                 │   │
-│  └─────────────┘   │  ├── Telegram polling supervisor   │   │
-│         ▲          │  └── Scheduled fetch loop (5 min)  │   │
-│         │          └───────────────────────────────────┘   │
-│         │                          │                        │
-│         │                          ▼                        │
-│         │          ┌───────────────────────────────┐        │
-│         └──────────┤  main.py pipeline             │        │
-│                    │  fetch → enrich → filter      │        │
-│                    │  → dedup → insert → send      │        │
-│                    │  → notify → track → monitor   │        │
-│                    └───────────────────────────────┘        │
-│                                    │                        │
-│                                    ▼                        │
-│                           Telegram group/topics             │
-│                           + subscriber DMs                  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Docker Compose host (VPS)                                                  │
+│                                                                             │
+│  ┌─────────────┐   ┌───────────────────────────────────────────────────┐   │
+│  │ PostgreSQL  │   │  backend service (server.py)                      │   │
+│  │   (db)      │◄──┤  ├── FastAPI /api                                 │   │
+│  └─────────────┘   │  ├── Telegram polling supervisor                   │   │
+│         ▲          │  ├── Fetch scheduler (5 min)                       │   │
+│         │          │  └── Delivery scheduler (1 min)                    │   │
+│         │          └───────────────────────────────────────────────────┘   │
+│         │                          │                                        │
+│         │                          ▼                                        │
+│         │          ┌───────────────────────────────┐                       │
+│         └──────────┤  main.py ingestion pipeline   │                       │
+│                    │  fetch → enrich → filter      │                       │
+│                    │  → dedup → insert → enqueue   │                       │
+│                    └───────────────────────────────┘                       │
+│                              │                                              │
+│                              ▼                                              │
+│                     ┌─────────────────────┐                                 │
+│                     │  job_deliveries     │                                 │
+│                     │  durable queue      │                                 │
+│                     └─────────────────────┘                                 │
+│                              │                                              │
+│                              ▼                                              │
+│                     Telegram group/topics                                   │
+│                     + subscriber DMs                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
                            React dashboard (optional)

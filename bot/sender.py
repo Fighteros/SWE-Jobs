@@ -1,17 +1,30 @@
 """
-Job message formatting and sending with inline buttons.
-Replaces the old telegram_sender.py.
+Job message formatting and group-topic delivery.
+
+This module now works with durable delivery records in the job_deliveries
+queue. Each record represents one (job, topic) send attempt; records are
+claimed independently, sent independently, and retried independently.
 """
 
 import asyncio
 import logging
+
 from telegram import Bot
 from telegram.error import TelegramError, RetryAfter, TimedOut, NetworkError
 
+from core import db_async as adb
 from core.config import TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_ID, TELEGRAM_SEND_DELAY
 from core.models import Job
 from core.channels import CHANNELS, get_topic_thread_id, SOURCE_ICON
-from core import db_async as adb
+from core.delivery_queue import (
+    DELIVERY_TYPE_GROUP_TOPIC,
+    claim_pending_deliveries,
+    enqueue_job_deliveries,
+    mark_delivery_failed,
+    mark_delivery_sent,
+    mark_delivery_skipped,
+    update_job_aggregate_message_id,
+)
 from bot.keyboards import job_buttons
 
 log = logging.getLogger(__name__)
@@ -97,32 +110,60 @@ async def _send_with_retry(bot: Bot, **kwargs) -> object:
     return None  # unreachable, last attempt raises
 
 
-async def send_job_to_topics(bot: Bot, job: Job, job_db_id: int) -> dict:
+def _is_retryable_error(error: str) -> bool:
+    err = error.lower()
+    return any(phrase in err for phrase in (
+        "retry after", "timed out", "network error", "bad gateway",
+        "gateway timeout", "too many requests", "connection",
+    ))
+
+
+async def deliver_group_topic_records(bot: Bot, records: list[dict]) -> dict:
     """
-    Send a job to all matching Telegram topics with inline buttons.
+    Send a batch of claimed group_topic delivery records.
 
-    Args:
-        bot: Telegram Bot instance
-        job: The job to send
-        job_db_id: The job's database ID (for button callbacks)
+    Each record is one (job, topic) attempt. Results are persisted
+    independently; successful topics are not retried, failed topics are.
 
-    Returns: {topic_key: {"chat_id": ..., "message_id": ...}} for sent messages
+    Returns a stats dict with sent/failed/skipped counts.
     """
-    message = format_job_message(job)
-    keyboard = job_buttons(job_db_id)
-    sent_messages = {}
+    stats = {"sent": 0, "failed": 0, "skipped": 0}
 
-    if not job.topics:
-        log.warning(f"  ⚠ No topics assigned: {job.title}")
-        return sent_messages
+    if not records:
+        return stats
 
-    for topic_key in job.topics:
-        thread_id = get_topic_thread_id(topic_key)
-        if thread_id is None:
-            log.warning(f"  ⚠ Topic '{topic_key}' has no thread_id — env var not set?")
+    # Pre-load jobs to avoid N+1 lookups.
+    job_ids = {r["job_id"] for r in records}
+    jobs_by_id: dict[int, Job] = {}
+    for job_id in job_ids:
+        from core import db_async as adb
+        row = await adb._fetchone("SELECT * FROM jobs WHERE id = %s", (job_id,))
+        if row:
+            jobs_by_id[job_id] = Job.from_db_row(row)
+
+    for i, record in enumerate(records):
+        delivery_id = record["id"]
+        job_id = record["job_id"]
+        topic_key = record["recipient_key"]
+
+        job = jobs_by_id.get(job_id)
+        if not job:
+            await asyncio.to_thread(mark_delivery_failed, delivery_id, "job not found", False)
+            stats["failed"] += 1
             continue
 
-        topic_name = CHANNELS[topic_key]["name"]
+        thread_id = get_topic_thread_id(topic_key)
+        if thread_id is None:
+            await asyncio.to_thread(
+                mark_delivery_skipped, delivery_id, "topic_not_configured"
+            )
+            stats["skipped"] += 1
+            continue
+
+        topic_name = CHANNELS.get(topic_key, {}).get("name", topic_key)
+        message = format_job_message(job)
+        keyboard = job_buttons(job_id)
+
         try:
             result = await _send_with_retry(
                 bot,
@@ -133,57 +174,89 @@ async def send_job_to_topics(bot: Bot, job: Job, job_db_id: int) -> dict:
                 message_thread_id=thread_id,
                 reply_markup=keyboard,
             )
-            sent_messages[topic_key] = {
-                "chat_id": str(TELEGRAM_GROUP_ID),
-                "message_id": result.message_id,
-            }
+            message_id = getattr(result, "message_id", None)
+            await asyncio.to_thread(mark_delivery_sent, delivery_id, message_id)
+            if message_id:
+                await asyncio.to_thread(
+                    update_job_aggregate_message_id, job_id, topic_key, message_id
+                )
+            stats["sent"] += 1
             log.info(f"  ✓ Sent to {topic_name}: {job.title}")
         except TelegramError as e:
+            err = str(e)
+            await asyncio.to_thread(
+                mark_delivery_failed, delivery_id, err, _is_retryable_error(err)
+            )
+            stats["failed"] += 1
             log.error(f"  ✗ Failed {topic_name}: {job.title} — {e}")
+        except Exception as e:
+            await asyncio.to_thread(mark_delivery_failed, delivery_id, str(e), True)
+            stats["failed"] += 1
+            log.error(f"  ✗ Unexpected error sending to {topic_name}: {job.title} — {e}")
 
-        await _async_sleep(0.5)
+        if i < len(records) - 1:
+            await asyncio.sleep(0.5)
 
-    return sent_messages
+    if sum(stats.values()):
+        log.info(f"📊 Group-topic batch: {stats}")
+
+    return stats
+
+
+# =============================================================================
+# Backwards-compatible helpers
+# =============================================================================
+
+async def send_job_to_topics(bot: Bot, job: Job, job_db_id: int) -> dict:
+    """
+    Send a job to all matching Telegram topics with inline buttons.
+
+    Returns: {topic_key: {"chat_id": ..., "message_id": ...}} for sent messages.
+    Kept for callers that build deliveries inline; prefer deliver_group_topic_records.
+    """
+    if not job.topics:
+        log.warning(f"  ⚠ No topics assigned: {job.title}")
+        return {}
+
+    await asyncio.to_thread(enqueue_job_deliveries, [(job, job_db_id)], is_seed=False)
+
+    # Claim and deliver the records we just created.
+    records = await asyncio.to_thread(
+        claim_pending_deliveries,
+        len(job.topics),
+        delivery_type=DELIVERY_TYPE_GROUP_TOPIC,
+    )
+    await deliver_group_topic_records(bot, records)
+
+    row = await adb._fetchone(
+        "SELECT telegram_message_ids FROM jobs WHERE id = %s", (job_db_id,)
+    )
+    return row["telegram_message_ids"] if row else {}
 
 
 async def send_jobs(bot: Bot, jobs: list[tuple[Job, int]]) -> int:
     """
     Send multiple jobs to their matching topics.
 
-    Args:
-        bot: Telegram Bot instance
-        jobs: List of (Job, db_id) tuples
-
-    Returns: Number of jobs successfully delivered (sent to at least one topic)
+    Backwards-compatible helper: creates delivery records and immediately
+    attempts to deliver them. Returns the number of jobs that had at least one
+    topic sent.
     """
-    jobs_delivered = 0
-    topic_stats = {}
+    if not jobs or not bot:
+        return 0
 
-    for i, (job, db_id) in enumerate(jobs):
-        sent = await send_job_to_topics(bot, job, db_id)
+    await asyncio.to_thread(enqueue_job_deliveries, jobs, is_seed=False)
 
-        # Update DB with message IDs
-        if sent:
-            await adb.mark_job_sent(db_id, sent)
-            jobs_delivered += 1
+    total_sent = 0
+    for job, db_id in jobs:
+        sent_map = await send_job_to_topics(bot, job, db_id)
+        if sent_map:
+            total_sent += 1
+        await asyncio.sleep(TELEGRAM_SEND_DELAY)
 
-        for t_key in sent:
-            topic_stats[t_key] = topic_stats.get(t_key, 0) + 1
-
-        if i < len(jobs) - 1:
-            await _async_sleep(TELEGRAM_SEND_DELAY)
-
-    if topic_stats:
-        total_topic_sends = sum(topic_stats.values())
-        log.info(f"📊 Send summary: {jobs_delivered}/{len(jobs)} jobs delivered ({total_topic_sends} topic sends)")
-        for t_key, count in sorted(topic_stats.items()):
-            t_name = CHANNELS.get(t_key, {}).get("name", t_key)
-            log.info(f"  {t_name}: {count} jobs")
-
-    return jobs_delivered
+    return total_sent
 
 
 async def _async_sleep(seconds: float) -> None:
     """Async sleep wrapper."""
-    import asyncio
     await asyncio.sleep(seconds)
