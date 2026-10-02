@@ -54,6 +54,35 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
             await send_admin_alert(bot, msg)
             alerts.append(msg)
 
+        # Alert: run took too long
+        if run["finished_at"] and run["started_at"]:
+            duration = await adb._fetchone(
+                "SELECT EXTRACT(EPOCH FROM (%s - %s)) as seconds",
+                (run["finished_at"], run["started_at"]),
+            )
+            if duration and duration["seconds"] > 300:
+                msg = f"⏰ <b>ALERT: Slow run</b>\nRun took {int(duration['seconds'])}s (threshold: 300s)"
+                log.info(msg)
+
+        # Alert: low queue insertion rate
+        # jobs_sent is reused to store group-topic deliveries queued this run.
+        stats = run.get("source_stats") or {}
+        if isinstance(stats, str):
+            import json as _json
+            stats = _json.loads(stats)
+        jobs_attempted = stats.get("_jobs_attempted", 0)
+        jobs_queued = run.get("jobs_sent", 0)
+        if jobs_attempted > 0:
+            queue_rate = jobs_queued / jobs_attempted
+            if queue_rate < 0.8:
+                msg = (
+                    f"📉 <b>ALERT: Low queue rate</b>\n"
+                    f"Queued {jobs_queued}/{jobs_attempted} jobs "
+                    f"({queue_rate:.0%} queue rate)"
+                )
+                await send_admin_alert(bot, msg)
+                alerts.append(msg)
+
         # Alert: circuit breaker opened
         broken = await adb._fetchall(
             "SELECT source FROM source_health WHERE circuit_open_until > now()"
