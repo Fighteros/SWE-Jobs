@@ -106,8 +106,6 @@ Dead-letter records can be replayed manually with `core.delivery_queue.replay_de
 Anomalies monitored:
 
 - Zero jobs fetched (all sources may be down)
-- Slow run duration
-- Low queue insertion rate
 - Circuit breaker activations
 - Dead-letter records accumulating
 
