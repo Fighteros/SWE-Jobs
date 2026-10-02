@@ -350,10 +350,9 @@ SWE-Jobs/
 │   └── backfill_job_deliveries.py # One-time post-migration DM backfill
 │
 ├── .github/workflows/
-│   ├── job_bot.yml             # Disabled — one-off pipeline (manual only)
 │   ├── deploy_backend.yml      # Auto-deploy backend on push
-│   ├── deploy_dashboard.yml    # Dashboard → GitHub Pages
-│   └── archive_jobs.yml        # Periodic job archival
+│   ├── deploy_dashboard.yml    # Dashboard build (GitHub Pages; moving to Vercel)
+│   └── ci.yml                  # Continuous integration: tests, lint, typecheck, build
 │
 └── docs/                       # Documentation
     ├── CONFIGURATION.md        # All environment variables
@@ -380,9 +379,21 @@ Key files:
 | [Architecture](docs/ARCHITECTURE.md) | System design, pipeline, database schema, delivery queue operations runbook |
 | [Adding Sources](docs/ADDING_SOURCES.md) | Step-by-step guide to add a new job source |
 | [Self-Hosting](docs/SELF_HOSTING.md) | VPS + Docker Compose deployment, updating & migration steps |
+| [Admin Dashboard](docs/ADMIN_DASHBOARD.md) | Admin-only dashboard design, milestone roadmap, auth/RBAC target |
+| [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) | Vercel deployment guide (CORS, cookies, CSP, smoke tests, rollback) |
+| [Admin Operations](docs/ADMIN_OPERATIONS.md) | Operational runbooks (migrations, bootstrap, invites, recovery) |
+| [Admin Changelog](docs/ADMIN_DASHBOARD_CHANGELOG.md) | Implementation changelog for the admin dashboard work |
 | [User Guide](USER_GUIDE.md) | End-user Telegram bot guide |
 | [Changelog](docs/CHANGELOG_V2.md) | V1 → V2 changes + post-v2 updates (incl. durable delivery queue) |
 | [Releases](https://github.com/Fighteros/SWE-Jobs/releases) | Version history and release notes |
+
+## Admin Dashboard (in progress)
+
+A private, admin-only React/Vite dashboard is being built on top of the FastAPI
+backend. Milestone 1 removes direct Supabase browser access, anonymous database
+grants, and GitHub Pages routing; later milestones add JWT auth, RBAC, and TOTP.
+See [docs/ADMIN_DASHBOARD.md](docs/ADMIN_DASHBOARD.md) for the design and
+[docs/DASHBOARD_DEPLOYMENT.md](docs/DASHBOARD_DEPLOYMENT.md) for the Vercel guide.
 
 ## Running Tests
 

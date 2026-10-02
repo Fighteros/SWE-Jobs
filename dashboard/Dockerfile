@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -8,8 +8,7 @@ RUN npm ci
 COPY . .
 
 ARG VITE_API_BASE
-ARG VITE_SUPABASE_URL
-ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_APP_ENV
 
 RUN npm run build
 

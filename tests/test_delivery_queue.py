@@ -187,14 +187,17 @@ class TestEnqueueJobDeliveries:
 
         inserted = []
 
-        def fake_insert(rows):
+        def fake_execute_values(cur, sql, rows, **kwargs):
             inserted.extend(rows)
-            return len(rows)
+            return [(i,) for i in range(len(rows))]
 
         with patch("core.delivery_queue.db._fetchall", return_value=users), \
              patch("core.delivery_queue.db.get_user_alerts", return_value=alerts), \
              patch("core.delivery_queue.db.get_blacklist", return_value=blacklist), \
-             patch("core.delivery_queue._insert_delivery_rows", side_effect=fake_insert):
+             patch("core.delivery_queue.psycopg2.extras.execute_values", side_effect=fake_execute_values), \
+             patch("core.delivery_queue.db._get_conn") as mock_conn:
+            mock_cur = MagicMock()
+            mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value = mock_cur
             stats = enqueue_job_deliveries([(sample_job, 1)])
 
         group_rows = [r for r in inserted if r["delivery_type"] == DELIVERY_TYPE_GROUP_TOPIC]
@@ -238,19 +241,21 @@ class TestClaimPendingDeliveries:
 class TestMarkDeliverySent:
     def test_updates_status_and_message_id(self):
         with patch("core.delivery_queue.db._execute") as mock_exec:
-            mark_delivery_sent(5, 123)
+            mark_delivery_sent(5, "test-worker", 123)
             assert mock_exec.called
-            params = mock_exec.call_args[0][1]
-            assert STATUS_SENT in params
-            assert 123 in params
-            assert 5 in params
+            # First call: the delivery status update; second: jobs.sent_at update.
+            first_params = mock_exec.call_args_list[0][0][1]
+            assert STATUS_SENT in first_params
+            assert 123 in first_params
+            assert 5 in first_params
+            assert "test-worker" in first_params
 
 
 class TestMarkDeliveryFailed:
     def test_retryable_failure_sets_pending_with_backoff(self):
         with patch("core.delivery_queue.db._fetchone", return_value={"attempts": 1}), \
              patch("core.delivery_queue.db._execute") as mock_exec:
-            mark_delivery_failed(5, "network error", retryable=True)
+            mark_delivery_failed(5, "test-worker", "network error", retryable=True)
             params = mock_exec.call_args[0][1]
             assert STATUS_PENDING in params
             assert "network error" in params
@@ -258,14 +263,14 @@ class TestMarkDeliveryFailed:
     def test_permanent_failure_sets_dead_letter(self):
         with patch("core.delivery_queue.db._fetchone", return_value={"attempts": 1}), \
              patch("core.delivery_queue.db._execute") as mock_exec:
-            mark_delivery_failed(5, "bot was blocked", retryable=False)
+            mark_delivery_failed(5, "test-worker", "bot was blocked", retryable=False)
             params = mock_exec.call_args[0][1]
             assert STATUS_DEAD_LETTER in params
 
     def test_exhausted_retries_dead_letters(self):
         with patch("core.delivery_queue.db._fetchone", return_value={"attempts": 5}), \
              patch("core.delivery_queue.db._execute") as mock_exec:
-            mark_delivery_failed(5, "network error", retryable=True, max_attempts=5)
+            mark_delivery_failed(5, "test-worker", "network error", retryable=True, max_attempts=5)
             params = mock_exec.call_args[0][1]
             assert STATUS_DEAD_LETTER in params
             assert "retry_exhausted" in params
@@ -292,21 +297,30 @@ class TestReleaseDeliveryToPending:
 class TestRecoverStaleDeliveries:
     def test_returns_to_pending_when_retries_remain(self):
         stale = [{"id": 1, "attempts": 1}]
-        with patch("core.delivery_queue.db._fetchall", return_value=stale), \
-             patch("core.delivery_queue.db._execute") as mock_exec:
+        with patch("core.delivery_queue.db._get_conn") as mock_conn:
+            mock_cur = MagicMock()
+            mock_cur.fetchall.return_value = stale
+            mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value = mock_cur
             stats = recover_stale_deliveries(lease_seconds=600, max_attempts=5)
             assert stats == {"recovered": 1, "dead_lettered": 0}
-            params = mock_exec.call_args[0][1]
-            assert STATUS_PENDING in params
+            # The UPDATE call should set status to pending.
+            update_sql = mock_cur.execute.call_args_list[1][0][0]
+            assert "SET status = %s" in update_sql
+            update_params = mock_cur.execute.call_args_list[1][0][1]
+            assert STATUS_PENDING in update_params
 
     def test_dead_letters_when_retries_exhausted(self):
         stale = [{"id": 1, "attempts": 5}]
-        with patch("core.delivery_queue.db._fetchall", return_value=stale), \
-             patch("core.delivery_queue.db._execute") as mock_exec:
+        with patch("core.delivery_queue.db._get_conn") as mock_conn:
+            mock_cur = MagicMock()
+            mock_cur.fetchall.return_value = stale
+            mock_conn.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value = mock_cur
             stats = recover_stale_deliveries(lease_seconds=600, max_attempts=5)
             assert stats == {"recovered": 0, "dead_lettered": 1}
-            params = mock_exec.call_args[0][1]
-            assert STATUS_DEAD_LETTER in params
+            update_sql = mock_cur.execute.call_args_list[1][0][0]
+            assert "SET status = %s" in update_sql
+            update_params = mock_cur.execute.call_args_list[1][0][1]
+            assert STATUS_DEAD_LETTER in update_params
 
 
 class TestReplayDeadLetter:

@@ -118,17 +118,17 @@ REMOTE_ONLY_SOURCES = {"remotive", "remoteok", "wwr", ..., "yoursource"}
 
 Remote-only sources automatically pass the geo-filter (no location check needed).
 
-## Step 4: Add to GitHub Actions (if API key needed)
+## Step 4: Add the API key to your environment
 
-If your source requires an API key, add it to `.github/workflows/job_bot.yml`:
+If your source requires an API key, add it to `.env` (and your server's
+environment / GitHub deployment secrets):
 
-```yaml
-env:
-  # ... existing keys ...
-  YOURSOURCE_API_KEY: ${{ secrets.YOURSOURCE_API_KEY }}
+```
+YOURSOURCE_API_KEY=your-key-here
 ```
 
-Then add the secret in **GitHub Settings > Secrets > Actions**.
+The backend reads all `*_API_KEY` environment variables at startup; sources
+whose key is absent are skipped silently.
 
 ## Step 5: Test
 

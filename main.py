@@ -62,6 +62,9 @@ async def main():
             errors.append({"source": source_key, "error": "no jobs returned"})
         fetch_summary.append(f"{name}={len(jobs)}")
 
+    # Track total jobs attempted (fetched) for monitoring queue-rate alert.
+    source_stats["_jobs_attempted"] = len(all_jobs)
+
     log.info(f"Fetched {len(all_jobs)} jobs: {', '.join(fetch_summary)}")
 
     # ── 3. Enrich all jobs ──────────────────────────────────
@@ -118,7 +121,7 @@ async def main():
         jobs_fetched=len(all_jobs),
         jobs_filtered=len(filtered),
         jobs_new=len(new_jobs),
-        jobs_sent=delivery_stats.get("group_topic_queued", 0),
+        jobs_sent=len(inserted_jobs),
         source_stats=source_stats,
         errors=errors,
     )

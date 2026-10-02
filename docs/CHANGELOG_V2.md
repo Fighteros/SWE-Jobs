@@ -95,9 +95,11 @@ Row Level Security enabled on all tables. `anon` role limited to SELECT on `jobs
 
 | Workflow | V1 | V2 |
 |----------|----|----|
-| `job_bot.yml` | Basic cron, ~10 env vars | 30+ env vars, 10-min timeout |
-| `deploy_dashboard.yml` | -- | New: builds React app -> GitHub Pages |
-| `archive_jobs.yml` | -- | New: periodic old job archival |
+| `deploy_backend.yml` | -- | Auto-deploy backend on push |
+| `deploy_dashboard.yml` | -- | Builds React app (GitHub Pages; moving to Vercel) |
+| `ci.yml` | -- | CI gate: tests, lint, typecheck, build |
+| `archive_jobs.yml` | -- | Removed (run archival via server cron instead) |
+| `job_bot.yml` | Basic cron, ~10 env vars | Removed (server.py scheduler replaced it) |
 
 ## Test Suite (new)
 
@@ -134,3 +136,13 @@ Decoupled Telegram delivery from ingestion using a PostgreSQL-backed durable que
 | **Dead ends** | Silent drops | Explicit `dead_letter` / `skipped` states with reasons; admin alerts |
 
 New pieces: `job_deliveries` table (migration `007`), `core/delivery_queue.py`, `core/delivery_scheduler.py`, `core/subscription_matching.py`, `scripts/backfill_job_deliveries.py`, backfill of pre-queue unsent jobs, queue-aware monitoring. See `docs/ARCHITECTURE.md — Delivery Queue Operations` for the runbook.
+
+## Post-V2 Update: Admin Dashboard — Milestone 1 (2026-10)
+
+Began the admin-only dashboard program. Milestone 1 is a baseline & boundary milestone
+(no auth yet): documentation + CI, dependency upgrades, removal of direct Supabase
+browser access, removal of anonymous database grants, removal of GitHub Pages routing,
+and boundary tests. JWT auth, RBAC, and TOTP are explicitly deferred to later milestones.
+
+See [ADMIN_DASHBOARD_CHANGELOG.md](ADMIN_DASHBOARD_CHANGELOG.md) for the per-change log
+and [ADMIN_DASHBOARD.md](ADMIN_DASHBOARD.md) for the design.

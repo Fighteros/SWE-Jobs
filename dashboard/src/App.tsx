@@ -7,7 +7,7 @@ import Trends from './pages/Trends';
 
 export default function App() {
   return (
-    <BrowserRouter basename="/SWE-Jobs">
+    <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />

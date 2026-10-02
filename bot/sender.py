@@ -145,17 +145,18 @@ async def deliver_group_topic_records(bot: Bot, records: list[dict]) -> dict:
         delivery_id = record["id"]
         job_id = record["job_id"]
         topic_key = record["recipient_key"]
+        worker_id = record["worker_id"]
 
         job = jobs_by_id.get(job_id)
         if not job:
-            await asyncio.to_thread(mark_delivery_failed, delivery_id, "job not found", False)
+            await asyncio.to_thread(mark_delivery_failed, delivery_id, worker_id, "job not found", False)
             stats["failed"] += 1
             continue
 
         thread_id = get_topic_thread_id(topic_key)
         if thread_id is None:
             await asyncio.to_thread(
-                mark_delivery_skipped, delivery_id, "topic_not_configured"
+                mark_delivery_skipped, delivery_id, worker_id, "topic_not_configured"
             )
             stats["skipped"] += 1
             continue
@@ -175,7 +176,7 @@ async def deliver_group_topic_records(bot: Bot, records: list[dict]) -> dict:
                 reply_markup=keyboard,
             )
             message_id = getattr(result, "message_id", None)
-            await asyncio.to_thread(mark_delivery_sent, delivery_id, message_id)
+            await asyncio.to_thread(mark_delivery_sent, delivery_id, worker_id, message_id)
             if message_id:
                 await asyncio.to_thread(
                     update_job_aggregate_message_id, job_id, topic_key, message_id
@@ -185,12 +186,12 @@ async def deliver_group_topic_records(bot: Bot, records: list[dict]) -> dict:
         except TelegramError as e:
             err = str(e)
             await asyncio.to_thread(
-                mark_delivery_failed, delivery_id, err, _is_retryable_error(err)
+                mark_delivery_failed, delivery_id, worker_id, err, _is_retryable_error(err)
             )
             stats["failed"] += 1
             log.error(f"  ✗ Failed {topic_name}: {job.title} — {e}")
         except Exception as e:
-            await asyncio.to_thread(mark_delivery_failed, delivery_id, str(e), True)
+            await asyncio.to_thread(mark_delivery_failed, delivery_id, worker_id, str(e), True)
             stats["failed"] += 1
             log.error(f"  ✗ Unexpected error sending to {topic_name}: {job.title} — {e}")
 
