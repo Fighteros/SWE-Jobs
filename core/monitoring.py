@@ -92,18 +92,6 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
             await send_admin_alert(bot, msg)
             alerts.append(msg)
 
-        # Alert: dead-letter records exist
-        dead_letter_count = await adb._fetchone(
-            "SELECT COUNT(*) as count FROM job_deliveries WHERE status = 'dead_letter'"
-        )
-        if dead_letter_count and dead_letter_count["count"] > 0:
-            msg = (
-                f"💀 <b>ALERT: Dead-letter deliveries</b>\n"
-                f"{dead_letter_count['count']} record(s) require attention"
-            )
-            await send_admin_alert(bot, msg)
-            alerts.append(msg)
-
     except Exception as e:
         log.error(f"Alert check failed: {e}")
 
