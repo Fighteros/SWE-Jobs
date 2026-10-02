@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Clean install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_BASE: http://localhost:8000
+          VITE_APP_ENV: ci
+
+      - name: Boundary tests
+        run: npm run test
+
+      - name: Dependency security check
+        run: npm audit --omit=dev --audit-level=high || true
+
+  docs-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate internal doc links exist
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          SKIP_DIRS = {".git", ".claude", ".superpowers", "node_modules", "venv",
+                       "__pycache__", ".pytest_cache", ".tokensave"}
+          files = []
+          for root in ["docs", "."]:
+              for dp, dirs, fs in os.walk(root):
+                  dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                  for f in fs:
+                      if f.endswith(".md"):
+                          files.append(os.path.join(dp, f))
+          link_re = re.compile(r'\]\(([^)#]+\.md)(#[^)]*)?\)')
+          missing = []
+          for md in files:
+              base = os.path.dirname(md)
+              with open(md, encoding="utf-8") as fh:
+                  for m in link_re.finditer(fh.read()):
+                      target = m.group(1)
+                      cand = os.path.normpath(os.path.join(base, target))
+                      if not os.path.isfile(cand):
+                          missing.append(f"{md} -> {target}")
+          if missing:
+              for x in missing:
+                  print("Missing doc link:", x)
+              sys.exit(1)
+          print("Doc link check passed.")
+          PY

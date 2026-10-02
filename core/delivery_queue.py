@@ -197,13 +197,51 @@ def enqueue_job_deliveries(
     """
     Create durable delivery records for a batch of newly inserted jobs.
 
+    Both group-topic and subscriber-DM rows are inserted in a single transaction
+    so a crash between them cannot leave committed jobs with partial delivery records.
+
     Returns counts of group_topic and subscriber_dm rows created.
     """
     group_rows = build_group_topic_deliveries(jobs_with_ids, is_seed=is_seed)
     dm_rows = build_subscriber_dm_deliveries(jobs_with_ids, is_seed=is_seed)
 
-    group_inserted = _insert_delivery_rows(group_rows)
-    dm_inserted = _insert_delivery_rows(dm_rows)
+    columns = [
+        "job_id",
+        "delivery_type",
+        "recipient_key",
+        "status",
+        "dead_letter_reason",
+        "next_attempt_at",
+    ]
+    col_str = ", ".join(columns)
+    template = "(" + ", ".join(f"%({c})s" for c in columns) + ")"
+    sql = (
+        f"INSERT INTO job_deliveries ({col_str}) VALUES %s "
+        f"ON CONFLICT (job_id, delivery_type, recipient_key) DO NOTHING "
+        f"RETURNING id"
+    )
+
+    group_inserted = 0
+    dm_inserted = 0
+
+    with db._get_conn() as conn:
+        with conn.cursor() as cur:
+            if group_rows:
+                result = psycopg2.extras.execute_values(
+                    cur, sql, group_rows,
+                    template=template,
+                    page_size=100,
+                    fetch=True,
+                )
+                group_inserted = len(result) if result else 0
+            if dm_rows:
+                result = psycopg2.extras.execute_values(
+                    cur, sql, dm_rows,
+                    template=template,
+                    page_size=100,
+                    fetch=True,
+                )
+                dm_inserted = len(result) if result else 0
 
     logger.info(
         f"Enqueued deliveries: {group_inserted} group-topic, {dm_inserted} subscriber-DM"
@@ -274,8 +312,12 @@ def claim_pending_deliveries(
             return [dict(r) for r in rows]
 
 
-def mark_delivery_sent(delivery_id: int, message_id: Optional[int] = None) -> None:
-    """Persist a successful delivery."""
+def mark_delivery_sent(delivery_id: int, worker_id: str, message_id: Optional[int] = None) -> None:
+    """Persist a successful delivery. Fenced by worker_id to prevent stale workers.
+
+    Also sets jobs.sent_at when all group-topic deliveries for the job have been
+    sent (or are in a terminal state), so jobs.sent_at reflects publication state.
+    """
     db._execute(
         """
         UPDATE job_deliveries
@@ -286,14 +328,46 @@ def mark_delivery_sent(delivery_id: int, message_id: Optional[int] = None) -> No
             worker_id = NULL,
             last_error = NULL,
             updated_at = now()
-        WHERE id = %s
+        WHERE id = %s AND worker_id = %s AND status = %s
         """,
-        (STATUS_SENT, message_id, delivery_id),
+        (STATUS_SENT, message_id, delivery_id, worker_id, STATUS_PROCESSING),
+    )
+    _update_job_sent_at(delivery_id)
+
+
+def _update_job_sent_at(delivery_id: int) -> None:
+    """Set jobs.sent_at if all group-topic deliveries for the job are in a terminal state
+    and at least one was sent. This makes jobs.sent_at reflect publication state."""
+    db._execute(
+        """
+        UPDATE jobs
+        SET sent_at = now()
+        WHERE id = (
+            SELECT jd.job_id
+            FROM job_deliveries jd
+            WHERE jd.id = %s
+              AND NOT EXISTS (
+                  SELECT 1 FROM job_deliveries jd2
+                  WHERE jd2.job_id = jd.job_id
+                    AND jd2.delivery_type = %s
+                    AND jd2.status NOT IN (%s, %s, %s)
+              )
+              AND EXISTS (
+                  SELECT 1 FROM job_deliveries jd3
+                  WHERE jd3.job_id = jd.job_id
+                    AND jd3.delivery_type = %s
+                    AND jd3.status = %s
+              )
+        )
+        AND sent_at IS NULL
+        """,
+        (delivery_id, DELIVERY_TYPE_GROUP_TOPIC, STATUS_SENT, STATUS_SKIPPED, STATUS_DEAD_LETTER,
+         DELIVERY_TYPE_GROUP_TOPIC, STATUS_SENT),
     )
 
 
-def mark_delivery_skipped(delivery_id: int, reason: str) -> None:
-    """Mark a delivery as intentionally skipped (e.g. missing topic config)."""
+def mark_delivery_skipped(delivery_id: int, worker_id: str, reason: str) -> None:
+    """Mark a delivery as intentionally skipped (e.g. missing topic config). Fenced by worker_id."""
     db._execute(
         """
         UPDATE job_deliveries
@@ -302,9 +376,9 @@ def mark_delivery_skipped(delivery_id: int, reason: str) -> None:
             processing_started_at = NULL,
             worker_id = NULL,
             updated_at = now()
-        WHERE id = %s
+        WHERE id = %s AND worker_id = %s AND status = %s
         """,
-        (STATUS_SKIPPED, reason, delivery_id),
+        (STATUS_SKIPPED, reason, delivery_id, worker_id, STATUS_PROCESSING),
     )
 
 
@@ -356,13 +430,14 @@ def update_job_aggregate_message_id(job_id: int, topic_key: str, message_id: int
 
 def mark_delivery_failed(
     delivery_id: int,
+    worker_id: str,
     error: str,
     retryable: bool,
     max_attempts: Optional[int] = None,
     retry_base_seconds: Optional[int] = None,
 ) -> None:
     """
-    Record a failed delivery attempt.
+    Record a failed delivery attempt. Fenced by worker_id to prevent stale workers.
 
     If the error is retryable and attempts remain, return the record to pending
     with a backoff-delayed next_attempt_at. Otherwise move it to dead_letter.
@@ -373,11 +448,11 @@ def mark_delivery_failed(
     retry_base_seconds = retry_base_seconds if retry_base_seconds is not None else DELIVERY_RETRY_BASE_SECONDS
 
     row = db._fetchone(
-        "SELECT attempts FROM job_deliveries WHERE id = %s",
-        (delivery_id,),
+        "SELECT attempts FROM job_deliveries WHERE id = %s AND worker_id = %s AND status = %s",
+        (delivery_id, worker_id, STATUS_PROCESSING),
     )
     if row is None:
-        logger.warning(f"mark_delivery_failed called for unknown delivery_id={delivery_id}")
+        logger.warning(f"mark_delivery_failed: delivery_id={delivery_id} not in processing for worker_id={worker_id}")
         return
 
     attempts = row["attempts"]
@@ -393,9 +468,9 @@ def mark_delivery_failed(
                 processing_started_at = NULL,
                 worker_id = NULL,
                 updated_at = now()
-            WHERE id = %s
+            WHERE id = %s AND worker_id = %s AND status = %s
             """,
-            (STATUS_PENDING, next_at, _trim_error(error), delivery_id),
+            (STATUS_PENDING, next_at, _trim_error(error), delivery_id, worker_id, STATUS_PROCESSING),
         )
     else:
         reason = "retry_exhausted" if retryable and attempts >= max_attempts else "permanent_failure"
@@ -409,9 +484,9 @@ def mark_delivery_failed(
                 processing_started_at = NULL,
                 worker_id = NULL,
                 updated_at = now()
-            WHERE id = %s
+            WHERE id = %s AND worker_id = %s AND status = %s
             """,
-            (STATUS_DEAD_LETTER, reason, _trim_error(error), delivery_id),
+            (STATUS_DEAD_LETTER, reason, _trim_error(error), delivery_id, worker_id, STATUS_PROCESSING),
         )
 
 
@@ -432,6 +507,10 @@ def recover_stale_deliveries(
     Find records stuck in processing longer than the lease and either return
     them to pending (if retries remain) or move them to dead_letter.
 
+    The SELECT ... FOR UPDATE and all UPDATEs run in a single transaction so the
+    lock covers the state transitions (no other worker can claim these records
+    while we're deciding their fate).
+
     Returns a dict with counts.
     """
     from core.config import DELIVERY_PROCESSING_LEASE_SECONDS, DELIVERY_MAX_ATTEMPTS
@@ -439,59 +518,62 @@ def recover_stale_deliveries(
     lease_seconds = lease_seconds if lease_seconds is not None else DELIVERY_PROCESSING_LEASE_SECONDS
     max_attempts = max_attempts if max_attempts is not None else DELIVERY_MAX_ATTEMPTS
 
-    stale = db._fetchall(
-        """
-        SELECT id, attempts
-        FROM job_deliveries
-        WHERE status = %s
-          AND processing_started_at < now() - make_interval(secs := %s)
-        FOR UPDATE SKIP LOCKED
-        """,
-        (STATUS_PROCESSING, lease_seconds),
-    )
-
     recovered = 0
     dead_lettered = 0
 
-    for row in stale:
-        delivery_id = row["id"]
-        attempts = row["attempts"]
-        if attempts < max_attempts:
-            db._execute(
+    with db._get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
                 """
-                UPDATE job_deliveries
-                SET status = %s,
-                    next_attempt_at = now(),
-                    processing_started_at = NULL,
-                    worker_id = NULL,
-                    last_error = %s,
-                    updated_at = now()
-                WHERE id = %s
+                SELECT id, attempts
+                FROM job_deliveries
+                WHERE status = %s
+                  AND processing_started_at < now() - make_interval(secs := %s)
+                FOR UPDATE SKIP LOCKED
                 """,
-                (STATUS_PENDING, f"stale processing lease expired after {lease_seconds}s", delivery_id),
+                (STATUS_PROCESSING, lease_seconds),
             )
-            recovered += 1
-        else:
-            db._execute(
-                """
-                UPDATE job_deliveries
-                SET status = %s,
-                    dead_letter_reason = %s,
-                    last_error = %s,
-                    failed_at = now(),
-                    processing_started_at = NULL,
-                    worker_id = NULL,
-                    updated_at = now()
-                WHERE id = %s
-                """,
-                (
-                    STATUS_DEAD_LETTER,
-                    "retry_exhausted_after_stale_recovery",
-                    f"stale processing lease expired after {lease_seconds}s",
-                    delivery_id,
-                ),
-            )
-            dead_lettered += 1
+            stale = cur.fetchall()
+
+            for row in stale:
+                delivery_id = row["id"]
+                attempts = row["attempts"]
+                if attempts < max_attempts:
+                    cur.execute(
+                        """
+                        UPDATE job_deliveries
+                        SET status = %s,
+                            next_attempt_at = now(),
+                            processing_started_at = NULL,
+                            worker_id = NULL,
+                            last_error = %s,
+                            updated_at = now()
+                        WHERE id = %s
+                        """,
+                        (STATUS_PENDING, f"stale processing lease expired after {lease_seconds}s", delivery_id),
+                    )
+                    recovered += 1
+                else:
+                    cur.execute(
+                        """
+                        UPDATE job_deliveries
+                        SET status = %s,
+                            dead_letter_reason = %s,
+                            last_error = %s,
+                            failed_at = now(),
+                            processing_started_at = NULL,
+                            worker_id = NULL,
+                            updated_at = now()
+                        WHERE id = %s
+                        """,
+                        (
+                            STATUS_DEAD_LETTER,
+                            "retry_exhausted_after_stale_recovery",
+                            f"stale processing lease expired after {lease_seconds}s",
+                            delivery_id,
+                        ),
+                    )
+                    dead_lettered += 1
 
     if recovered or dead_lettered:
         logger.info(
@@ -508,7 +590,10 @@ def recover_stale_deliveries(
 def replay_dead_letter(delivery_id: int) -> bool:
     """
     Move a dead-letter record back to pending for manual retry.
-    Preserves last_error and failed_at history; clears dead_letter_reason.
+
+    Resets attempts to 0 so the record becomes re-claimable (claim_pending_deliveries
+    filters on attempts < DELIVERY_MAX_ATTEMPTS). Preserves last_error and failed_at
+    history; clears dead_letter_reason.
     """
     row = db._execute(
         """
@@ -516,6 +601,7 @@ def replay_dead_letter(delivery_id: int) -> bool:
         SET status = %s,
             next_attempt_at = now(),
             dead_letter_reason = NULL,
+            attempts = 0,
             processing_started_at = NULL,
             worker_id = NULL,
             updated_at = now()

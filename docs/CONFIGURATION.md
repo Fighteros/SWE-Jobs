@@ -6,7 +6,7 @@ All configuration is done through environment variables. Copy `.env.example` to 
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DB_HOST` | Supabase/PostgreSQL host | `db.xxxx.supabase.co` |
+| `DB_HOST` | PostgreSQL host | `db` |
 | `DB_PORT` | Database port | `6543` |
 | `DB_NAME` | Database name | `postgres` |
 | `DB_USER` | Database user | `postgres` |
@@ -115,23 +115,24 @@ Permanent failures (dead-letter immediately): bot blocked, forbidden, chat/user 
 
 ## GitHub Actions Secrets
 
-For GitHub Actions deployment, add all the variables above as repository secrets:
-
-1. Go to your repo on GitHub
-2. **Settings** > **Secrets and variables** > **Actions**
-3. Click **New repository secret** for each variable
-
-The workflow file `.github/workflows/job_bot.yml` maps these secrets to environment variables automatically.
+For self-hosted deployment, add all the variables above to your `.env` file on the
+server (or Docker secrets). The backend reads them at startup via `python-dotenv`.
 
 ## Dashboard Environment
 
-The React dashboard uses these variables (set in the GitHub Pages deployment workflow):
+The React dashboard uses these public build variables (set in the deployment
+environment or `.env.local`):
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_SUPABASE_URL` | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key (read-only) |
-| `VITE_API_BASE` | FastAPI backend URL |
+| `VITE_API_BASE` | FastAPI backend URL (e.g. `https://api.example.com`) |
+| `VITE_APP_ENV` | Environment label (`production` / `staging` / `development`) |
+| `VITE_RELEASE_SHA` | Optional commit SHA for diagnostics |
+
+See `dashboard/.env.example` and [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md)
+for the full Vercel deployment guide. The dashboard no longer connects to
+Supabase directly — all data requests go through the FastAPI backend. The
+database is self-hosted PostgreSQL in a Docker container; no Supabase is in use.
 
 ## Pipeline Constants
 

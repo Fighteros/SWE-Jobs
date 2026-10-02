@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .claude/
 .superpowers/
+.tokensave/
 
 # Local DB-migration artifacts — data dumps & logs, never commit
 swejobs_data.sql

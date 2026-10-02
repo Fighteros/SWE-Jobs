@@ -1,14 +1,14 @@
 -- =============================================================================
--- Supabase-compatible roles for a self-hosted Postgres container.
+-- Compatibility roles for the self-hosted Postgres container.
 --
--- Supabase ships predefined roles (anon, authenticated, service_role) that the
--- schema migrations reference (e.g. `CREATE POLICY ... TO anon` and
--- `GRANT ... TO anon` in 001_init.sql). Vanilla Postgres has none of them, so
--- those statements abort the migration unless the roles exist first.
+-- Historical migrations (001_init.sql etc.) reference predefined roles
+-- (anon, authenticated, service_role) in GRANT/POLICY statements. Vanilla
+-- Postgres has none of them, so those statements abort the migration unless
+-- the roles exist first. After migration 008 strips all data privileges,
+-- these roles remain as NOLOGIN placeholders with no access to business data.
 --
 -- The application connects as the superuser (POSTGRES_USER) and therefore
--- bypasses Row Level Security entirely; these roles only need to EXIST so the
--- GRANT/POLICY statements apply cleanly. The numeric `000` prefix guarantees
+-- bypasses Row Level Security entirely. The numeric `000` prefix guarantees
 -- this file runs before 001_init.sql (initdb scripts run in lexical order).
 -- =============================================================================
 

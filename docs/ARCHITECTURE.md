@@ -56,7 +56,7 @@ Before fetching, the **circuit breaker** (`core/circuit_breaker.py`) checks if a
 
 ### 5. Insert
 
-New jobs are inserted into the `jobs` table via `core/db.py`. The database layer uses connection pooling with SSL (required by Supabase).
+New jobs are inserted into the `jobs` table via `core/db.py`. The database layer uses connection pooling with SSL (required for remote hosts; disabled for the local Docker container).
 
 ### 6. Enqueue
 
@@ -230,7 +230,11 @@ Pages:
 - **Salary** — salary distributions by seniority, role, country
 - **Trends** — skill popularity trends over time
 
-Connects to Supabase directly for reads and the FastAPI backend for aggregated queries.
+> **In progress:** the dashboard is transitioning to an admin-only, Vercel-deployed
+> SPA that talks to FastAPI exclusively. Direct Supabase browser access and
+> anonymous database grants are being removed. JWT auth, RBAC, and TOTP are planned
+> for later milestones. See [ADMIN_DASHBOARD.md](ADMIN_DASHBOARD.md) for the design
+> and [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md) for the Vercel guide.
 
 ## Deployment
 
@@ -238,9 +242,9 @@ Connects to Supabase directly for reads and the FastAPI backend for aggregated q
 - **Database migrations** — the custom PostgreSQL image applies every migration in `supabase/migrations/` automatically **on first boot only** (empty `pgdata` volume). Existing databases must apply new migrations manually — see [Delivery Queue Operations](#delivery-queue-operations) below.
 - **Backfill existing unsent jobs** — after migration `007_job_deliveries.sql` is applied, run `python scripts/backfill_job_deliveries.py` once to create subscriber-DM records for jobs inserted under the old 50-job cap.
 - **Telegram polling supervision** — `bot/polling.py` `PollingSupervisor` starts polling, lets PTB retry transient errors (502s, timeouts), rebuilds the poller in-process after a continuous failure streak (fresh Application + HTTP pools), and only exits for a container restart if recovery keeps failing. `/health` reports polling liveness; the backend service has a Docker healthcheck.
-- **Bot pipeline (manual)** — `main.py` one-shot ingestion workflow (`job_bot.yml`, manual dispatch only; overlaps with the server scheduler by design).
-- **Dashboard** — GitHub Pages, deployed on push to `main` (`deploy_dashboard.yml`)
-- **Job archival** — GitHub Actions periodic workflow (`archive_jobs.yml`)
+- **Bot pipeline (manual)** — `main.py` one-shot ingestion (run locally/inside the container if the scheduler is stopped).
+- **Dashboard** — moving to Vercel (admin-only); currently GitHub Pages, `deploy_dashboard.yml`
+- **Job archival** — run the archival SQL manually (see [SELF_HOSTING.md](SELF_HOSTING.md)) or via a cron job on the server.
 - **Database** — self-hosted Postgres container in the same Compose stack
 
 ## Delivery Queue Operations

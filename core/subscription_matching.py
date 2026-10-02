@@ -62,6 +62,12 @@ def job_matches_alert(job: Job, alert: dict) -> bool:
         if not any(kw.lower() in title_lower for kw in sub_keywords):
             return False
 
+    # Check minimum salary
+    min_salary = alert.get("min_salary")
+    if min_salary:
+        if job.salary_min is None or job.salary_min < min_salary:
+            return False
+
     return True
 
 

@@ -65,12 +65,12 @@ async def check_alerts(bot: Bot, run_id: int) -> list[str]:
                 log.info(msg)
 
         # Alert: low queue insertion rate
-        # jobs_sent is reused to store group-topic deliveries queued this run.
+        # jobs_new = new jobs inserted this run; jobs_sent = jobs enqueued for delivery.
         stats = run.get("source_stats") or {}
         if isinstance(stats, str):
             import json as _json
             stats = _json.loads(stats)
-        jobs_attempted = stats.get("_jobs_attempted", 0)
+        jobs_attempted = stats.get("_jobs_attempted", run.get("jobs_new", 0))
         jobs_queued = run.get("jobs_sent", 0)
         if jobs_attempted > 0:
             queue_rate = jobs_queued / jobs_attempted

@@ -17,7 +17,7 @@ def check_migration():
     except Exception as e:
         if "undefined_table" in str(e).lower() or "does not exist" in str(e).lower():
             print("❌ user_alerts table is MISSING.")
-            print("\nSUGGESTION: Please run the migration 'supabase/migrations/005_user_alerts.sql' in your Supabase SQL editor.")
+            print("\nSUGGESTION: Please run the migration 'supabase/migrations/005_user_alerts.sql' in your PostgreSQL database.")
             return
         else:
             print(f"⚠️ Error checking table: {e}")

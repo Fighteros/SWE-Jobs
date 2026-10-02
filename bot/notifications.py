@@ -165,6 +165,7 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
         delivery_id = record["id"]
         job_id = record["job_id"]
         telegram_id = record["recipient_key"]
+        worker_id = record["worker_id"]
 
         if telegram_id in rate_limited_users:
             await asyncio.to_thread(release_delivery_to_pending, delivery_id)
@@ -178,6 +179,7 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
             await asyncio.to_thread(
                 mark_delivery_failed,
                 delivery_id,
+                worker_id,
                 "missing job or user",
                 False,
             )
@@ -200,10 +202,10 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
             matched = _matching_alert(job, alerts)
 
             if matched is None or job_blocked_by_blacklist(job, blacklist):
-                # Subscriber or alert state changed since enqueue; skip permanently.
-                await asyncio.to_thread(
-                    mark_delivery_skipped, delivery_id, "alert_or_blacklist_changed"
-                )
+                # Alert or blacklist changed since enqueue; return to pending
+                # so the job is retried if the user re-enables their alert.
+                await asyncio.to_thread(release_delivery_to_pending, delivery_id)
+                stats["deferred"] += 1
                 continue
 
             msg = format_job_message(job)
@@ -215,12 +217,12 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
                 reply_markup=job_buttons(job_id),
             )
             message_id = getattr(result, "message_id", None)
-            await asyncio.to_thread(mark_delivery_sent, delivery_id, message_id)
+            await asyncio.to_thread(mark_delivery_sent, delivery_id, worker_id, message_id)
             user_sent_counts[telegram_id] += 1
             stats["sent"] += 1
 
         except (RetryAfter, TimedOut, NetworkError) as e:
-            await asyncio.to_thread(mark_delivery_failed, delivery_id, str(e), True)
+            await asyncio.to_thread(mark_delivery_failed, delivery_id, worker_id, str(e), True)
             stats["failed"] += 1
         except TelegramError as e:
             err = str(e)
@@ -229,16 +231,16 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
                     "UPDATE users SET notify_dm = FALSE WHERE telegram_id = %s",
                     (int(telegram_id),),
                 )
-                await asyncio.to_thread(mark_delivery_failed, delivery_id, err, False)
+                await asyncio.to_thread(mark_delivery_failed, delivery_id, worker_id, err, False)
                 log.info(f"Disabled DMs for user {telegram_id}: {e}")
                 stats["disabled_users"] += 1
             else:
                 await asyncio.to_thread(
-                    mark_delivery_failed, delivery_id, err, _is_retryable_error(err)
+                    mark_delivery_failed, delivery_id, worker_id, err, _is_retryable_error(err)
                 )
             stats["failed"] += 1
         except Exception as e:
-            await asyncio.to_thread(mark_delivery_failed, delivery_id, str(e), True)
+            await asyncio.to_thread(mark_delivery_failed, delivery_id, worker_id, str(e), True)
             stats["failed"] += 1
 
     log.info(

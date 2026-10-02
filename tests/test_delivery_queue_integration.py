@@ -80,19 +80,19 @@ def fresh_db():
     # Patch core.db to use the test database and reset its pool.
     cfg = _parse_db_url(TEST_DB_URL)
     original = {
-        "SUPABASE_DB_HOST": db.SUPABASE_DB_HOST,
-        "SUPABASE_DB_PORT": db.SUPABASE_DB_PORT,
-        "SUPABASE_DB_NAME": db.SUPABASE_DB_NAME,
-        "SUPABASE_DB_USER": db.SUPABASE_DB_USER,
-        "SUPABASE_DB_PASSWORD": db.SUPABASE_DB_PASSWORD,
-        "SUPABASE_DB_SSLMODE": db.SUPABASE_DB_SSLMODE,
+        "DB_HOST": db.DB_HOST,
+        "DB_PORT": db.DB_PORT,
+        "DB_NAME": db.DB_NAME,
+        "DB_USER": db.DB_USER,
+        "DB_PASSWORD": db.DB_PASSWORD,
+        "DB_SSLMODE": db.DB_SSLMODE,
     }
-    db.SUPABASE_DB_HOST = cfg["host"]
-    db.SUPABASE_DB_PORT = cfg["port"]
-    db.SUPABASE_DB_NAME = cfg["dbname"]
-    db.SUPABASE_DB_USER = cfg["user"]
-    db.SUPABASE_DB_PASSWORD = cfg["password"]
-    db.SUPABASE_DB_SSLMODE = "disable"
+    db.DB_HOST = cfg["host"]
+    db.DB_PORT = cfg["port"]
+    db.DB_NAME = cfg["dbname"]
+    db.DB_USER = cfg["user"]
+    db.DB_PASSWORD = cfg["password"]
+    db.DB_SSLMODE = "disable"
     db.close_pool()
     db._pool = None
 
@@ -268,7 +268,7 @@ class TestRetryAndDeadLetter:
         claim_pending_deliveries(10, worker_id="w1")
         rows = claim_pending_deliveries(10, worker_id="w1")
         delivery_id = rows[0]["id"]
-        mark_delivery_failed(delivery_id, "network error", retryable=True, max_attempts=5, retry_base_seconds=30)
+        mark_delivery_failed(delivery_id, "w1", "network error", retryable=True, max_attempts=5, retry_base_seconds=30)
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM job_deliveries WHERE id = %s", (delivery_id,))
@@ -290,7 +290,7 @@ class TestRetryAndDeadLetter:
 
         rows = claim_pending_deliveries(10, worker_id="w1")
         delivery_id = rows[0]["id"]
-        mark_delivery_failed(delivery_id, "bot was blocked", retryable=False, max_attempts=5, retry_base_seconds=30)
+        mark_delivery_failed(delivery_id, "w1", "bot was blocked", retryable=False, max_attempts=5, retry_base_seconds=30)
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM job_deliveries WHERE id = %s", (delivery_id,))
@@ -311,7 +311,7 @@ class TestRetryAndDeadLetter:
 
         rows = claim_pending_deliveries(10, worker_id="w1")
         delivery_id = rows[0]["id"]
-        mark_delivery_failed(delivery_id, "network error", retryable=True, max_attempts=5, retry_base_seconds=30)
+        mark_delivery_failed(delivery_id, "w1", "network error", retryable=True, max_attempts=5, retry_base_seconds=30)
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT * FROM job_deliveries WHERE id = %s", (delivery_id,))
@@ -325,18 +325,21 @@ class TestRetryAndDeadLetter:
         job_id = _insert_job(conn)
         with conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO job_deliveries (job_id, delivery_type, recipient_key, status, dead_letter_reason)
-                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-                (job_id, DELIVERY_TYPE_GROUP_TOPIC, "backend", STATUS_DEAD_LETTER, "test"),
+                """INSERT INTO job_deliveries (job_id, delivery_type, recipient_key, status, dead_letter_reason, attempts)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                (job_id, DELIVERY_TYPE_GROUP_TOPIC, "backend", STATUS_DEAD_LETTER, "test", 5),
             )
             delivery_id = cur.fetchone()[0]
 
         ok = replay_dead_letter(delivery_id)
         assert ok is True
 
-        with conn.cursor() as cur:
-            cur.execute("SELECT status FROM job_deliveries WHERE id = %s", (delivery_id,))
-            assert cur.fetchone()[0] == STATUS_PENDING
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT status, attempts FROM job_deliveries WHERE id = %s", (delivery_id,))
+            row = cur.fetchone()
+
+        assert row["status"] == STATUS_PENDING
+        assert row["attempts"] == 0, "replay must reset attempts to 0 for re-claimability"
 
 
 class TestStaleRecovery:
