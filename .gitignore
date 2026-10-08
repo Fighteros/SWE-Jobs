@@ -4,9 +4,9 @@ __pycache__/
 .claude/
 .superpowers/
 
-# Local DB-migration artifacts — data dumps & logs, never commit
+# Local database artifacts - data dumps & logs, never commit
 swejobs_data.sql
-supabase_schema.sql
+*_schema.sql
 *.log
 
 # Database backups produced by scripts/backup_db.sh

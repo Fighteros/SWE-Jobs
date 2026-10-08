@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-MIGRATIONS_DIR = pathlib.Path(__file__).parent.parent / "supabase" / "migrations"
+MIGRATIONS_DIR = pathlib.Path(__file__).parent.parent / "postgres" / "migrations"
 MIGRATIONS_TO_APPLY = [
     "001_init.sql",
     "002_applications_and_blacklist.sql",

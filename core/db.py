@@ -18,12 +18,12 @@ from psycopg2.extras import Json, RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 
 from core.config import (
-    SUPABASE_DB_HOST,
-    SUPABASE_DB_PORT,
-    SUPABASE_DB_NAME,
-    SUPABASE_DB_USER,
-    SUPABASE_DB_PASSWORD,
-    SUPABASE_DB_SSLMODE,
+    DB_HOST,
+    DB_PORT,
+    DB_NAME,
+    DB_USER,
+    DB_PASSWORD,
+    DB_SSLMODE,
     DB_CONNECT_TIMEOUT,
     DB_STATEMENT_TIMEOUT_MS,
     DB_POOL_MAXCONN,
@@ -55,21 +55,12 @@ def _get_pool() -> ThreadedConnectionPool:
         if _pool is not None:  # double-check: another thread may have built it
             return _pool
 
-        db_host = SUPABASE_DB_HOST
-
-        # Supabase direct hosts (db.xxx.supabase.co) are IPv6-only.
-        # GitHub Actions runners can't reach IPv6. Warn the user.
-        if db_host.startswith("db.") and db_host.endswith(".supabase.co"):
-            logger.warning(
-                "Direct Supabase host detected (IPv6-only). "
-                "If connection fails, set DB_HOST to your pooler endpoint: "
-                "aws-0-<region>.pooler.supabase.com"
-            )
+        db_host = DB_HOST
 
         # Try IPv4 resolution first, fall back to original host
         try:
             addrs = socket.getaddrinfo(
-                db_host, SUPABASE_DB_PORT,
+                db_host, DB_PORT,
                 socket.AF_INET, socket.SOCK_STREAM,
             )
             if addrs:
@@ -81,11 +72,11 @@ def _get_pool() -> ThreadedConnectionPool:
             minconn=1,
             maxconn=DB_POOL_MAXCONN,
             host=db_host,
-            port=SUPABASE_DB_PORT,
-            dbname=SUPABASE_DB_NAME,
-            user=SUPABASE_DB_USER,
-            password=SUPABASE_DB_PASSWORD,
-            sslmode=SUPABASE_DB_SSLMODE,
+            port=DB_PORT,
+            dbname=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            sslmode=DB_SSLMODE,
             # Fail fast instead of hanging the event loop if the DB stalls/dies.
             connect_timeout=DB_CONNECT_TIMEOUT,
             keepalives=1,

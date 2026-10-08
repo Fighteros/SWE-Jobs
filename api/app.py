@@ -1,10 +1,9 @@
 """
 FastAPI application factory.
-Serves the dashboard API endpoints with CORS and rate limiting.
+Serves the public API with rate limiting.
 """
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -17,14 +16,6 @@ def create_app(lifespan=None) -> FastAPI:
     # Rate limiting
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-    # CORS — allow dashboard origin
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Tighten to GitHub Pages URL in production
-        allow_methods=["GET"],
-        allow_headers=["*"],
-    )
 
     # Register routes
     from api.routes_jobs import router as jobs_router

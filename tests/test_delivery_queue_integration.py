@@ -43,7 +43,7 @@ from core.models import Job
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not TEST_DB_URL, reason="TEST_DATABASE_URL not set")
 
-MIGRATIONS_DIR = pathlib.Path(__file__).parent.parent / "supabase" / "migrations"
+MIGRATIONS_DIR = pathlib.Path(__file__).parent.parent / "postgres" / "migrations"
 MIGRATIONS = [
     "001_init.sql",
     "002_applications_and_blacklist.sql",
@@ -80,19 +80,19 @@ def fresh_db():
     # Patch core.db to use the test database and reset its pool.
     cfg = _parse_db_url(TEST_DB_URL)
     original = {
-        "SUPABASE_DB_HOST": db.SUPABASE_DB_HOST,
-        "SUPABASE_DB_PORT": db.SUPABASE_DB_PORT,
-        "SUPABASE_DB_NAME": db.SUPABASE_DB_NAME,
-        "SUPABASE_DB_USER": db.SUPABASE_DB_USER,
-        "SUPABASE_DB_PASSWORD": db.SUPABASE_DB_PASSWORD,
-        "SUPABASE_DB_SSLMODE": db.SUPABASE_DB_SSLMODE,
+        "DB_HOST": db.DB_HOST,
+        "DB_PORT": db.DB_PORT,
+        "DB_NAME": db.DB_NAME,
+        "DB_USER": db.DB_USER,
+        "DB_PASSWORD": db.DB_PASSWORD,
+        "DB_SSLMODE": db.DB_SSLMODE,
     }
-    db.SUPABASE_DB_HOST = cfg["host"]
-    db.SUPABASE_DB_PORT = cfg["port"]
-    db.SUPABASE_DB_NAME = cfg["dbname"]
-    db.SUPABASE_DB_USER = cfg["user"]
-    db.SUPABASE_DB_PASSWORD = cfg["password"]
-    db.SUPABASE_DB_SSLMODE = "disable"
+    db.DB_HOST = cfg["host"]
+    db.DB_PORT = cfg["port"]
+    db.DB_NAME = cfg["dbname"]
+    db.DB_USER = cfg["user"]
+    db.DB_PASSWORD = cfg["password"]
+    db.DB_SSLMODE = "disable"
     db.close_pool()
     db._pool = None
 

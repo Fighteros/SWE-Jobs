@@ -2,7 +2,7 @@
 # Nightly data backup for the self-hosted SWE-Jobs Postgres container.
 #
 # Produces a gzipped, data-only dump that restores into a fresh container (which
-# rebuilds the schema from supabase/migrations + docker/postgres/000_roles.sql).
+# rebuilds the schema from postgres/migrations + docker/postgres/000_roles.sql).
 #
 # Usage:  ./scripts/backup_db.sh [BACKUP_DIR]            (default: ./backups)
 # Cron:   0 3 * * * cd ~/SWE-Jobs && ./scripts/backup_db.sh >> backups/backup.log 2>&1

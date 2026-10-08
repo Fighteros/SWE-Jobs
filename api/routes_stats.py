@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("/summary")
 @limiter.limit("30/minute")
 async def stats_summary(request: Request):
-    """Aggregated stats for the dashboard home page."""
+    """Aggregated job market statistics."""
     today = await adb._fetchone(
         "SELECT COUNT(*) as count FROM jobs WHERE created_at > now() - make_interval(days := 1)"
     )

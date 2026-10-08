@@ -118,17 +118,15 @@ REMOTE_ONLY_SOURCES = {"remotive", "remoteok", "wwr", ..., "yoursource"}
 
 Remote-only sources automatically pass the geo-filter (no location check needed).
 
-## Step 4: Add to GitHub Actions (if API key needed)
+## Step 4: Configure the API key (if needed)
 
-If your source requires an API key, add it to `.github/workflows/job_bot.yml`:
+If your source requires an API key, add the variable to `.env.example` and set it in the VPS `.env` file:
 
 ```yaml
-env:
-  # ... existing keys ...
-  YOURSOURCE_API_KEY: ${{ secrets.YOURSOURCE_API_KEY }}
+YOURSOURCE_API_KEY=
 ```
 
-Then add the secret in **GitHub Settings > Secrets > Actions**.
+For local development, set the same variable in your local `.env` file.
 
 ## Step 5: Test
 
@@ -157,5 +155,5 @@ The circuit breaker will automatically track the health of your new source. If i
 - [ ] Registered in `sources/__init__.py` `ALL_FETCHERS` list
 - [ ] Added API key env var to `.env.example` (if needed)
 - [ ] Added to `REMOTE_ONLY_SOURCES` in `core/geo.py` (if remote-only)
-- [ ] Added secret to GitHub Actions workflow (if API key needed)
+- [ ] Added API key variable to `.env.example` (if needed)
 - [ ] Tested locally with `python main.py`

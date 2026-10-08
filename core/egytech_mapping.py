@@ -1,6 +1,6 @@
 """
 Mappings from our internal enums (seniority, topic) to egytech.fyi enums (level, title).
-Also contains free-text role aliases for the bot/dashboard role search.
+Also contains free-text role aliases for the bot's role search.
 """
 
 from typing import Optional
@@ -47,7 +47,7 @@ TOPIC_TO_TITLE: dict[str, str] = {
     "customer_support": "technical_support",
 }
 
-# Free-text aliases the user might type (in /salary or the dashboard search).
+# Free-text aliases the user might type in /salary.
 # Maps lowercased token -> egytech title.
 _ROLE_ALIASES: dict[str, str] = {
     # backend

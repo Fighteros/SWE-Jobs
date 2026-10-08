@@ -1,18 +1,18 @@
 # Configuration
 
-All configuration is done through environment variables. Copy `.env.example` to `.env` for local development, or add them as GitHub Secrets for Actions deployment.
+Configuration is provided through environment variables in `.env`. The production Docker Compose stack reads this file on the VPS. GitHub Actions uses repository secrets for the SSH deployment connection.
 
 ## Database (required)
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DB_HOST` | Supabase/PostgreSQL host | `db.xxxx.supabase.co` |
-| `DB_PORT` | Database port | `6543` |
+| `DB_HOST` | PostgreSQL host; use `db` inside Docker Compose | `db` |
+| `DB_PORT` | PostgreSQL port | `5432` |
 | `DB_NAME` | Database name | `postgres` |
 | `DB_USER` | Database user | `postgres` |
 | `DB_PASSWORD` | Database password | — |
 
-The database must have the schema from `supabase/migrations/001_init.sql` applied. This creates the `jobs`, `users`, `bot_runs`, `source_health`, and related tables, plus the `pg_trgm` extension for fuzzy matching.
+The PostgreSQL image applies the schema in `postgres/migrations/` when it initializes an empty data volume. Existing installations need new migrations applied manually; see [Self-hosting](SELF_HOSTING.md).
 
 ## Telegram (required)
 
@@ -113,25 +113,15 @@ Backoff sequence (retryable failures): 30s, 60s, 120s, 240s (capped at 24h).
 
 Permanent failures (dead-letter immediately): bot blocked, forbidden, chat/user not found, bot cannot initiate conversation, missing/invalid topic config, invalid recipient.
 
-## GitHub Actions Secrets
+## Deployment secrets
 
-For GitHub Actions deployment, add all the variables above as repository secrets:
+The backend deployment workflow needs these repository secrets:
 
 1. Go to your repo on GitHub
 2. **Settings** > **Secrets and variables** > **Actions**
 3. Click **New repository secret** for each variable
 
-The workflow file `.github/workflows/job_bot.yml` maps these secrets to environment variables automatically.
-
-## Dashboard Environment
-
-The React dashboard uses these variables (set in the GitHub Pages deployment workflow):
-
-| Variable | Description |
-|----------|-------------|
-| `VITE_SUPABASE_URL` | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key (read-only) |
-| `VITE_API_BASE` | FastAPI backend URL |
+The workflow uses `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, and `PROJECT_PATH`. Application secrets remain in the VPS `.env` file.
 
 ## Pipeline Constants
 
