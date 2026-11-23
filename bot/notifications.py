@@ -103,7 +103,7 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
     Per-user rate limiting is applied using a sliding window: once a user has
     received DM_MAX_PER_USER_PER_WINDOW messages within DM_RATE_WINDOW_SECONDS,
     all remaining records for that user in this batch are released back to
-    pending for future cycles.
+    pending until capacity opens in the rolling window (using the DB clock).
 
     Each record's outcome is persisted independently:
       - success          -> mark_delivery_sent
@@ -145,7 +145,7 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
 
     # Track per-user sent counts in this window.
     user_sent_counts: dict[str, int] = {}
-    rate_limited_users: set[str] = set()
+    retry_times: dict = {}
 
     async def _count_sent_in_window(telegram_id: str) -> int:
         row = await adb._fetchone(
@@ -161,14 +161,44 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
         )
         return row["count"] if row else 0
 
+    async def _defer(delivery_id: int, telegram_id: str) -> None:
+        if telegram_id not in retry_times:
+            # The quota-th newest send must expire before another send is safe.
+            # With a lowered quota, MIN(sent_at) would reopen the window too early.
+            row = await adb._fetchone(
+                """
+                SELECT COALESCE(
+                    (array_agg(sent_at ORDER BY sent_at DESC))[%s]
+                        + make_interval(secs := %s),
+                    now() + make_interval(secs := %s)
+                ) AS retry_at
+                FROM job_deliveries
+                WHERE delivery_type = %s
+                  AND recipient_key = %s
+                  AND status = %s
+                  AND sent_at > now() - make_interval(secs := %s)
+                """,
+                (DM_MAX_PER_USER_PER_WINDOW, DM_RATE_WINDOW_SECONDS,
+                 DM_RATE_WINDOW_SECONDS, DELIVERY_TYPE_SUBSCRIBER_DM,
+                 telegram_id, "sent", DM_RATE_WINDOW_SECONDS),
+            )
+            retry_times[telegram_id] = row["retry_at"]
+            log.info(
+                "DM rate limit reached for recipient %s; queued messages deferred until %s",
+                telegram_id, row["retry_at"].isoformat(),
+            )
+        await asyncio.to_thread(
+            release_delivery_to_pending, delivery_id, retry_times[telegram_id]
+        )
+        stats["deferred"] += 1
+
     for record in records:
         delivery_id = record["id"]
         job_id = record["job_id"]
         telegram_id = record["recipient_key"]
 
-        if telegram_id in rate_limited_users:
-            await asyncio.to_thread(release_delivery_to_pending, delivery_id)
-            stats["deferred"] += 1
+        if telegram_id in retry_times:
+            await _defer(delivery_id, telegram_id)
             continue
 
         job = jobs_by_id.get(job_id)
@@ -189,9 +219,7 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
             user_sent_counts[telegram_id] = await _count_sent_in_window(telegram_id)
 
         if user_sent_counts[telegram_id] >= DM_MAX_PER_USER_PER_WINDOW:
-            rate_limited_users.add(telegram_id)
-            await asyncio.to_thread(release_delivery_to_pending, delivery_id)
-            stats["deferred"] += 1
+            await _defer(delivery_id, telegram_id)
             continue
 
         try:
@@ -243,7 +271,7 @@ async def deliver_subscriber_dm_records(bot: Bot, records: list[dict]) -> dict:
 
     log.info(
         f"📬 DM delivery batch: {stats['sent']} sent, {stats['failed']} failed, "
-        f"{stats['deferred']} deferred"
+        f"{stats['deferred']} deferred (per-user rolling quota; scheduled for next capacity)"
     )
     return stats
 
