@@ -189,3 +189,52 @@ async def get_queue_stats() -> dict:
         stats[d_type][status] = stats[d_type].get(status, 0) + count
 
     return stats
+
+
+def send_admin_alert_sync(message: str, timeout: float = 5.0) -> bool:
+    """
+    Synchronous, best-effort admin alert for contexts where the event loop is
+    unavailable or about to die (fatal exits, crash paths). Never raises.
+    """
+    if not ADMIN_TELEGRAM_ID or not TELEGRAM_BOT_TOKEN:
+        log.debug("No ADMIN_TELEGRAM_ID/TELEGRAM_BOT_TOKEN set, skipping sync alert")
+        return False
+
+    try:
+        import requests
+
+        resp = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": int(ADMIN_TELEGRAM_ID),
+                "text": message,
+                "parse_mode": "HTML",
+            },
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            log.error("Sync admin alert failed: HTTP %s", resp.status_code)
+            return False
+        return True
+    except Exception as e:
+        log.error("Sync admin alert failed: %s", e)
+        return False
+
+
+async def notify_admin(message: str, bot: Optional[Bot] = None) -> bool:
+    """
+    Async admin alert that works with or without an existing Bot instance.
+    Creates a short-lived Bot when none is passed. Never raises.
+    """
+    if bot is not None:
+        return await send_admin_alert(bot, message)
+    if not TELEGRAM_BOT_TOKEN:
+        log.debug("No TELEGRAM_BOT_TOKEN set, skipping alert")
+        return False
+
+    try:
+        async with Bot(token=TELEGRAM_BOT_TOKEN) as own_bot:
+            return await send_admin_alert(own_bot, message)
+    except Exception as e:
+        log.error("Failed to send admin alert: %s", e)
+        return False

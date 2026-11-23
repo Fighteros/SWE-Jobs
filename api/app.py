@@ -4,6 +4,7 @@ Serves the public API with rate limiting.
 """
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -25,10 +26,19 @@ def create_app(lifespan=None) -> FastAPI:
 
     @app.get("/health")
     async def health():
-        # Includes supervised-polling liveness so the Docker healthcheck (and
-        # humans) can tell a bot-down backend from a healthy one.
-        from bot.polling import get_supervisor_status
+        # 503 while the polling supervisor is not running, so the Docker
+        # healthcheck (and autoheal) treats a bot-down backend as unhealthy
+        # instead of silently serving 200. Mid-recovery still counts as alive:
+        # the supervisor is actively rebuilding the poller then.
+        from bot.polling import get_supervisor_status, supervisor_alive
 
-        return {"status": "ok", "telegram": get_supervisor_status()}
+        alive = supervisor_alive()
+        return JSONResponse(
+            {
+                "status": "ok" if alive else "unhealthy",
+                "telegram": get_supervisor_status(),
+            },
+            status_code=200 if alive else 503,
+        )
 
     return app

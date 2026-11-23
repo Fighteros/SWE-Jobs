@@ -5,10 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Never let two deploys run at once: concurrent runs race on the server's git
+# checkout and docker build, and the loser fails with a confusing error.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Deploy to server via SSH
@@ -20,4 +26,44 @@ jobs:
           port: 22
           debug: true
           script: |
-            cd ${{ secrets.PROJECT_PATH }} && git pull origin main && docker compose up -d --build
+            set -euo pipefail
+            cd ${{ secrets.PROJECT_PATH }}
+            git pull --ff-only origin main
+            docker compose up -d --build
+
+            # Verify the backend actually came up healthy — a deploy whose
+            # container crash-loops must fail this workflow (and alert),
+            # not look successful.
+            echo "Waiting for backend health..."
+            for i in $(seq 1 24); do
+              if docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)" 2>/dev/null; then
+                echo "Backend healthy after $((i * 5))s"
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "Backend did not become healthy within 120s after deploy"
+            docker compose ps
+            docker compose logs --tail 50 backend
+            exit 1
+
+      - name: Notify deploy result on Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.ref }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID secrets not set — skipping notification"
+            exit 0
+          fi
+          if [ "${{ job.status }}" = "success" ]; then
+            TEXT=$'✅ <b>SWE-Jobs deploy succeeded</b>\n'"${GITHUB_SHA:0:7} ${COMMIT_MSG}"
+          else
+            TEXT=$'🚨 <b>SWE-Jobs deploy FAILED</b>\n'"${GITHUB_SHA:0:7} ${COMMIT_MSG}"$'\n'"The server is still running the previous version. See: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
+          curl -sS -m 10 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${TEXT}" \
+            -d parse_mode=HTML > /dev/null

@@ -14,9 +14,11 @@ from telegram import Bot
 from core.logging_config import setup_logging
 from api.app import create_app
 from core.config import (
+    ALERT_CONSECUTIVE_FAILURES,
     FETCH_INTERVAL_MINUTES,
     DELIVERY_INTERVAL_SECONDS,
     DELIVERY_IDLE_SLEEP_SECONDS,
+    STARTUP_ALERT,
     TELEGRAM_BOT_TOKEN,
 )
 from core.delivery_scheduler import run_delivery_cycle
@@ -38,9 +40,12 @@ async def _job_fetch_loop():
     """Run the ingestion pipeline on a fixed interval. Fetch cycles do not overlap."""
     from main import main as run_pipeline
 
+    from core.monitoring import notify_admin
+
     interval = FETCH_INTERVAL_MINUTES * 60
     log.info(f"Fetch scheduler started — running every {FETCH_INTERVAL_MINUTES} min")
 
+    failures = 0
     while True:
         if _fetch_lock.locked():
             log.warning("Fetch scheduler: previous cycle still running, skipping this tick")
@@ -50,8 +55,20 @@ async def _job_fetch_loop():
                     log.info("Fetch scheduler: starting ingestion run…")
                     await run_pipeline()
                     log.info("Fetch scheduler: run complete")
+                    if failures >= ALERT_CONSECUTIVE_FAILURES:
+                        await notify_admin(
+                            f"✅ <b>Job fetch recovered</b> after {failures} consecutive failed runs."
+                        )
+                    failures = 0
                 except Exception:
+                    failures += 1
                     log.exception("Fetch scheduler: run failed (will retry next interval)")
+                    if failures == ALERT_CONSECUTIVE_FAILURES:
+                        await notify_admin(
+                            "🚨 <b>Job fetch failing</b>\n"
+                            f"{failures} consecutive ingestion runs failed — new jobs are "
+                            "not being collected. See server logs."
+                        )
         await asyncio.sleep(interval)
 
 
@@ -69,7 +86,10 @@ async def _delivery_loop():
         while True:
             await asyncio.sleep(DELIVERY_INTERVAL_SECONDS)
 
+    from core.monitoring import notify_admin
+
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    failures = 0
     async with bot:
         while True:
             if _delivery_lock.locked():
@@ -83,8 +103,22 @@ async def _delivery_loop():
                 try:
                     log.info("Delivery scheduler: starting cycle…")
                     stats = await run_delivery_cycle(bot)
+                    if failures >= ALERT_CONSECUTIVE_FAILURES:
+                        await notify_admin(
+                            f"✅ <b>Telegram delivery recovered</b> after {failures} consecutive failed cycles.",
+                            bot,
+                        )
+                    failures = 0
                 except Exception:
+                    failures += 1
                     log.exception("Delivery scheduler: cycle failed (will retry next interval)")
+                    if failures == ALERT_CONSECUTIVE_FAILURES:
+                        await notify_admin(
+                            "🚨 <b>Telegram delivery failing</b>\n"
+                            f"{failures} consecutive delivery cycles failed — queued jobs are "
+                            "NOT reaching Telegram. See server logs.",
+                            bot,
+                        )
 
             total_work = (
                 stats.get("group_topic_sent", 0)
@@ -125,6 +159,22 @@ async def lifespan(app):
     _scheduler_task = asyncio.create_task(_job_fetch_loop(), name="job-fetch-scheduler")
     _delivery_task = asyncio.create_task(_delivery_loop(), name="job-delivery-scheduler")
     log.info("Fetch and delivery schedulers started alongside FastAPI")
+
+    if STARTUP_ALERT:
+        # Fire-and-forget: makes container restarts (crashes, OOM kills,
+        # deploys) visible in Telegram instead of silent.
+        async def _announce_start():
+            try:
+                from core.monitoring import notify_admin
+
+                await notify_admin(
+                    "✅ <b>SWE-Jobs backend started</b>\n"
+                    "Bot polling, fetch and delivery schedulers are running."
+                )
+            except Exception:
+                log.exception("Failed to send startup alert")
+
+        asyncio.create_task(_announce_start())
 
     yield
 

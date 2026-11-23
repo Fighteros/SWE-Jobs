@@ -32,14 +32,26 @@ The API listens on port `8000` by default. The database stays private. To access
 
 ## Deploying updates
 
-The `deploy_backend.yml` GitHub Actions workflow pulls `main` and runs `docker compose up -d --build` on the configured server. Set the repository secrets `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, and `PROJECT_PATH`. Application configuration remains in the server's `.env` file.
+The `deploy_backend.yml` GitHub Actions workflow pulls `main`, runs `docker compose up -d --build` on the configured server, then polls the backend `/health` endpoint and fails the run if the new build does not come up healthy. Set the repository secrets `SERVER_HOST`, `SERVER_USER`, `SERVER_SSH_KEY`, and `PROJECT_PATH`. Application configuration remains in the server's `.env` file.
+
+Deploys are serialized with a GitHub Actions concurrency group, so two pushes can no longer race on the server's git checkout.
+
+To get a Telegram message for every deploy result (success or failure), also set the repository secrets `TELEGRAM_BOT_TOKEN` (the bot token) and `TELEGRAM_ADMIN_CHAT_ID` (your Telegram user ID, same value as `ADMIN_TELEGRAM_ID` in `.env`). Without them the notification step skips silently. The `archive_jobs.yml` workflow sends the same notifications and applies `postgres/migrations/008_jobs_archive.sql` automatically before archiving, so older databases get the previously missing `jobs_archive` table.
 
 For a manual update:
 
 ```bash
-git pull origin main
+git pull --ff-only origin main
 docker compose up -d --build
 ```
+
+## Crash resilience and alerting
+
+Three layers keep the bot from going down silently:
+
+1. **In-process supervision.** The Telegram poller is supervised (`bot/polling.py`): transient Telegram outages heal in-process, unrecoverable states exit the container so Docker (`restart: unless-stopped`) brings it back. The admin gets a Telegram message when polling recovers and before a fatal exit.
+2. **Health-gated restart.** `/health` returns 503 while the polling supervisor is not running, so the Docker healthcheck fails for a bot-down backend. The `autoheal` service in `docker-compose.yml` watches the healthcheck and restarts the unhealthy container. It needs access to the Docker socket; remove the `autoheal` service if you do not want that.
+3. **Telegram alerts.** On every backend (re)start a message is sent (`STARTUP_ALERT=true` in `.env`), and repeated fetch, delivery, or supervisor failures alert after `ALERT_CONSECUTIVE_FAILURES` (default 3) consecutive errors, plus a recovery message when they succeed again. All alerts go to `ADMIN_TELEGRAM_ID` via the bot token.
 
 ## Database migrations
 
