@@ -89,6 +89,7 @@ Sources that don't require keys: Remotive, Himalayas, Jobicy, RemoteOK, Arbeitno
 | `SEED_MODE` | `true` = register jobs without creating live deliveries | `false` |
 | `STARTUP_ALERT` | Message the admin on every backend (re)start | `true` |
 | `ALERT_CONSECUTIVE_FAILURES` | Alert after this many consecutive fetch / delivery / supervisor failures | `3` |
+| `ALERT_CIRCUIT_COOLDOWN_HOURS` | Minimum hours between "circuit breaker open" alerts for the same source while it stays broken; the first open and the recovery always alert | `6` |
 
 Seed mode is useful for the first run — it populates the database without flooding the Telegram group with existing jobs.
 
