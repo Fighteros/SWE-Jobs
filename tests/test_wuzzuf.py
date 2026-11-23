@@ -117,3 +117,81 @@ def test_parse_alphanumeric_wuzzuf_ids_and_clean_card_title():
     assert jobs[0].posted_at is not None
     assert jobs[0].is_remote
     assert "Python" in jobs[0].tags
+
+
+def test_internship_links_are_collected_with_ssr_metadata():
+    html = HTML.replace('/jobs/p/123456-', '/internship/123456-')
+    jobs = _parse_html(html)
+    assert len(jobs) == 1
+    assert jobs[0].url.startswith('https://wuzzuf.net/internship/')
+    assert jobs[0].salary_raw == 'EGP 40K - 60K monthly'
+
+
+def test_current_card_work_type_block_does_not_hide_skill_links():
+    html = '''<h2><a href="/jobs/p/abc123-developer">Developer</a></h2>
+    <a href="/jobs/careers/acme">Acme</a><span>Cairo, Egypt</span>
+    <div class="css-5jhz9n"><a><span>Full Time</span></a></div>
+    <div><a>Python</a><a>Software Development</a></div>'''
+    job = _parse_html(html)[0]
+    assert 'Python' in job.tags
+    assert 'Software Development' in job.tags
+
+
+def test_ssr_keywords_are_kept_and_tags_are_unique():
+    html = HTML.replace('"careerLevel":', '"keywords":[{"name":"Python"},{"name":"Django"}],"careerLevel":')
+    tags = _parse_html(html)[0].tags
+    assert 'Django' in tags
+    assert tags.count('Python') == 1
+
+
+def _single_category(monkeypatch, response):
+    monkeypatch.setattr(wuzzuf, 'SEARCH_URLS', ['https://wuzzuf.net/a/test'])
+    monkeypatch.setattr(wuzzuf, 'WUZZUF_MAX_PAGES', 1)
+    monkeypatch.setattr(wuzzuf, 'get_text', lambda url: response)
+
+
+def test_transport_failure_is_not_healthy_empty_result(monkeypatch):
+    import pytest
+    _single_category(monkeypatch, None)
+    with pytest.raises(RuntimeError, match='HTTP/transport failure'):
+        wuzzuf.fetch_wuzzuf()
+
+
+def test_challenge_is_not_healthy_empty_result(monkeypatch):
+    import pytest
+    _single_category(monkeypatch, '<html><title>Just a moment...</title></html>')
+    with pytest.raises(RuntimeError, match='Access challenge'):
+        wuzzuf.fetch_wuzzuf()
+
+
+def test_unrecognized_markup_is_not_healthy_empty_result(monkeypatch):
+    import pytest
+    for response in ['', '<html><title>Log in</title></html>', '<html>Maintenance</html>']:
+        _single_category(monkeypatch, response)
+        with pytest.raises(RuntimeError):
+            wuzzuf.fetch_wuzzuf()
+
+
+def test_explicit_zero_results_is_valid(monkeypatch):
+    _single_category(monkeypatch, '<h2>0 Jobs found</h2>')
+    assert wuzzuf.fetch_wuzzuf() == []
+
+
+def test_partial_results_survive_one_failed_category(monkeypatch, caplog):
+    monkeypatch.setattr(wuzzuf, 'SEARCH_URLS', ['https://wuzzuf.net/a/ok', 'https://wuzzuf.net/a/bad'])
+    monkeypatch.setattr(wuzzuf, 'WUZZUF_MAX_PAGES', 1)
+    monkeypatch.setattr(wuzzuf, 'get_text', lambda url: HTML if url.endswith('/ok') else None)
+    assert len(wuzzuf.fetch_wuzzuf()) == 1
+    assert 'partial results' in caplog.text
+
+
+def test_wuzzuf_failure_reaches_source_health(monkeypatch):
+    from core import circuit_breaker
+    _single_category(monkeypatch, None)
+    failures, successes = [], []
+    monkeypatch.setattr(circuit_breaker, 'is_circuit_open', lambda source: False)
+    monkeypatch.setattr(circuit_breaker, '_record_failure', lambda *args: failures.append(args))
+    monkeypatch.setattr(circuit_breaker, '_record_success', lambda source: successes.append(source))
+    assert circuit_breaker.fetch_with_retry('wuzzuf', wuzzuf.fetch_wuzzuf, max_retries=0) == []
+    assert len(failures) == 1
+    assert successes == []

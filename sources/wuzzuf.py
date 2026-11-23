@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 BASE_URL = "https://wuzzuf.net"
 STATE_MARKER = re.compile(r'"job"\s*:\s*\{\s*"collection"\s*:')
 JOB_LINK_RE = re.compile(
-    r'<a\b[^>]*href=["\'](?P<href>[^"\']*/jobs/p/[^"\']+)["\'][^>]*>(?P<title>.*?)</a>',
+    r'<a\b[^>]*href=["\'](?P<href>[^"\']*(?:/jobs/p/|/internship/)[^"\']+)["\'][^>]*>(?P<title>.*?)</a>',
     re.IGNORECASE | re.DOTALL,
 )
 CAREER_LINK_RE = re.compile(
@@ -32,11 +32,7 @@ CAREER_LINK_RE = re.compile(
 )
 SPAN_RE = re.compile(r"<span\b[^>]*>(.*?)</span>", re.IGNORECASE | re.DOTALL)
 TAG_RE = re.compile(r"<a\b[^>]*>(.*?)</a>|<span\b[^>]*>(.*?)</span>", re.IGNORECASE | re.DOTALL)
-TAG_BLOCK_RE = re.compile(
-    r"class=[\"'][^\"']*(?:tag|css-5jhz9n)[^\"']*[\"'][^>]*>(.*?)</div>",
-    re.DOTALL | re.IGNORECASE,
-)
-JOB_ID_RE = re.compile(r"(?:/jobs/p/|^)([A-Za-z0-9]+)(?:-|/|$)")
+JOB_ID_RE = re.compile(r"(?:/jobs/p/|/internship/|^)([A-Za-z0-9]+)(?:-|/|$)")
 
 SEARCH_URLS = [
     "https://wuzzuf.net/a/Software-Development-Jobs-in-Egypt",
@@ -70,6 +66,7 @@ def fetch_wuzzuf() -> list[Job]:
     max_pages = max(1, WUZZUF_MAX_PAGES)
 
     pages_requested = 0
+    failures: list[str] = []
     for base_url in SEARCH_URLS:
         category_seen: set[str] = set()
         for page_index in range(max_pages):
@@ -77,10 +74,19 @@ def fetch_wuzzuf() -> list[Job]:
             pages_requested += 1
             page_html = get_text(url)
             if not page_html:
+                failures.append(f"HTTP/transport failure: {url}")
                 log.warning("Wuzzuf: no response for %s", url)
                 break
 
+            if _is_challenge(page_html):
+                failures.append(f"Access challenge: {url}")
+                log.warning("Wuzzuf: access challenge for %s", url)
+                break
             parsed = _parse_html(page_html, page_url=url)
+            if not parsed and not _is_empty_results(page_html):
+                failures.append(f"Unrecognized listing markup: {url}")
+                log.warning("Wuzzuf: unrecognized listing markup for %s", url)
+                break
             page_ids = {_job_id(job.url) for job in parsed if _job_id(job.url)}
             if not page_ids or page_ids.issubset(category_seen):
                 break
@@ -91,8 +97,28 @@ def fetch_wuzzuf() -> list[Job]:
                     seen_urls.add(canonical_url)
                     jobs.append(job)
 
+    if failures:
+        if not jobs:
+            # fetch_with_retry must record a source failure, not reset its circuit
+            # breaker after a blocked page masquerades as an empty job list.
+            raise RuntimeError(f"Wuzzuf collection failed ({len(failures)} pages): {failures[0]}")
+        log.warning("Wuzzuf: returning partial results; %s pages failed", len(failures))
     log.info("Wuzzuf: fetched %s jobs from %s page requests.", len(jobs), pages_requested)
     return jobs
+
+
+def _is_challenge(page_html: str) -> bool:
+    return bool(re.search(
+        r"<title[^>]*>\s*(?:Just a moment|Access denied)|"
+        r"id=[\"']challenge-form[\"']|/cdn-cgi/challenge-platform/",
+        page_html, re.IGNORECASE,
+    ))
+
+
+def _is_empty_results(page_html: str) -> bool:
+    # Only explicit zero-result pages are healthy empty responses. A 200 login,
+    # maintenance page, or changed card structure is not evidence of zero jobs.
+    return bool(re.search(r"\b0\s+Jobs?\s+found\b", _clean(page_html), re.IGNORECASE))
 
 
 def _extract_state(page_html: str) -> dict:
@@ -205,7 +231,11 @@ def _to_job(
     workplace = (attrs.get("workplaceArrangement") or {}).get("displayedName", "")
     career = (attrs.get("careerLevel") or {}).get("name", "")
     location = location or "Egypt"
-    all_tags = [tag for tag in tags + work_types if tag]
+    keywords = [item.get("name", "") for item in attrs.get("keywords") or []
+                if isinstance(item, dict)]
+    roles = [item.get("name", "") for item in attrs.get("workRoles") or []
+             if isinstance(item, dict)]
+    all_tags = list(dict.fromkeys(tag for tag in tags + keywords + roles + work_types if tag))
     posted_at = _parse_state_timestamp(attrs.get("postedAt")) or _parse_relative_date(posted)
     job_url = urljoin(page_url, href)
     split_url = urlsplit(job_url)
@@ -264,19 +294,20 @@ def _extract_job_type(card_html: str) -> str:
 
 
 def _extract_tags(card_html: str, company: str = "", location: str = "") -> list[str]:
-    tag_block = TAG_BLOCK_RE.search(card_html)
-    if tag_block:
-        candidates = (_clean(value) for value in SPAN_RE.findall(tag_block.group(1)))
-    else:
-        candidates = (_clean(match.group(1) or match.group(2) or "") for match in TAG_RE.finditer(card_html))
+    # The first css-5jhz9n block contains work type/workplace, not skills.
+    # Skills live later in the card and can be direct anchors or nested spans.
+    candidates = (_clean(match.group(1) or match.group(2) or "")
+                  for match in TAG_RE.finditer(card_html))
 
     tags = []
     blocked = {"apply", "view", "log in", "get started", company.lower(), location.lower()}
     for text in candidates:
+        text = text.strip(" ·-")
         lowered = text.lower()
         if not text or lowered in blocked or _looks_like_location(text):
             continue
-        if lowered.endswith("ago") or len(text) > 70 or text in tags:
+        if (lowered.endswith("ago") or "yrs of exp" in lowered
+                or len(text) > 70 or text in tags):
             continue
         tags.append(text)
         if len(tags) >= 18:
