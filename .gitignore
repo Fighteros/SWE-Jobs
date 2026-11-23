@@ -11,3 +11,4 @@ swejobs_data.sql
 
 # Database backups produced by scripts/backup_db.sh
 backups/
+seen_jobs.json

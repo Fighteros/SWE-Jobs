@@ -5,6 +5,10 @@ on:
     - cron: '0 3 * * 0'  # Every Sunday at 3am UTC
   workflow_dispatch:
 
+concurrency:
+  group: archive-jobs
+  cancel-in-progress: false
+
 jobs:
   archive:
     runs-on: ubuntu-latest
@@ -19,17 +23,54 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
-            docker compose -f ${{ secrets.PROJECT_PATH }}/docker-compose.yml exec -T db psql -U postgres -d postgres -c "
+            set -euo pipefail
+            # Make sure jobs_archive exists. It was added to 001_init.sql only
+            # in 3e59ff3, and migrations run only on empty volumes, so older
+            # databases never got it — which is why this job used to fail.
+            docker compose -f ${{ secrets.PROJECT_PATH }}/docker-compose.yml exec -T db \
+              psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              < ${{ secrets.PROJECT_PATH }}/postgres/migrations/008_jobs_archive.sql
+
+            docker compose -f ${{ secrets.PROJECT_PATH }}/docker-compose.yml exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "
               WITH moved AS (
                   DELETE FROM jobs
                   WHERE created_at < now() - interval '7 days'
                     AND sent_at IS NOT NULL
                   RETURNING *
               )
-              INSERT INTO jobs_archive
-              SELECT * FROM moved
+              INSERT INTO jobs_archive (id, unique_id, title, company, location, url, source,
+                  original_source, salary_raw, salary_min, salary_max, salary_currency,
+                  job_type, seniority, is_remote, country, tags, topics, created_at,
+                  updated_at, sent_at, telegram_message_ids, posted_at,
+                  apply_method, ats_provider, apply_email)
+              SELECT id, unique_id, title, company, location, url, source,
+                  original_source, salary_raw, salary_min, salary_max, salary_currency,
+                  job_type, seniority, is_remote, country, tags, topics, created_at,
+                  updated_at, sent_at, telegram_message_ids, posted_at,
+                  apply_method, ats_provider, apply_email
+              FROM moved
               ON CONFLICT (unique_id) DO NOTHING;
 
               DELETE FROM jobs_archive
               WHERE created_at < now() - interval '90 days';
             "
+
+      - name: Notify archive result on Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_ADMIN_CHAT_ID secrets not set — skipping notification"
+            exit 0
+          fi
+          if [ "${{ job.status }}" = "success" ]; then
+            TEXT="🗄️ SWE-Jobs weekly archive finished successfully."
+          else
+            TEXT=$'🚨 <b>SWE-Jobs weekly archive FAILED</b>\n'"See: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
+          curl -sS -m 10 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${TEXT}" \
+            -d parse_mode=HTML > /dev/null

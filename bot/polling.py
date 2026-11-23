@@ -23,12 +23,24 @@ import os
 import random
 
 from bot import app as bot_app
+from core import config
 
 log = logging.getLogger(__name__)
 
 # Module-level handle so /health can report supervisor state without wiring
 # (api.app imports lazily). Exactly one supervisor exists per process.
 _supervisor: "PollingSupervisor | None" = None
+
+# True while the supervisor task is running, including mid-recovery. /health
+# uses this as the process liveness signal: False means the poller is down AND
+# nobody is trying to bring it back, which is the state Docker/autoheal must
+# restart the container for.
+_supervisor_alive: bool = False
+
+
+def supervisor_alive() -> bool:
+    """True while the supervisor task is running (even mid-recovery)."""
+    return _supervisor_alive
 
 
 def get_supervisor_status() -> dict:
@@ -81,8 +93,9 @@ class PollingSupervisor:
 
     async def run(self) -> None:
         """Start polling (with retries) and supervise until stopped/cancelled."""
-        global _supervisor
+        global _supervisor, _supervisor_alive
         _supervisor = self
+        _supervisor_alive = True
         try:
             if not await self._start_with_retries():
                 self._fatal(
@@ -95,14 +108,17 @@ class PollingSupervisor:
             log.info("Polling supervisor cancelled — shutting bot down")
             raise
         finally:
+            _supervisor_alive = False
             await self._teardown()
 
     async def _start_with_retries(self) -> bool:
         """Try to reach a polling state; retry with backoff. True on success."""
+        global _supervisor_alive
         for attempt in range(1, self._startup_retries + 1):
             if self._stopping:
                 return False
             if await self._start_once():
+                _supervisor_alive = True
                 return True
             if attempt < self._startup_retries:
                 await self._backoff(attempt)
@@ -122,29 +138,57 @@ class PollingSupervisor:
         return True
 
     async def _supervise_loop(self) -> None:
-        """Rebuild the poller when it dies or gets stuck in an error loop."""
+        """Rebuild the poller when it dies or gets stuck in an error loop.
+
+        A single bad check must never kill the supervisor itself: an
+        unexpected error here would otherwise end the task silently and leave
+        the bot down while the process (and Docker healthcheck) looks fine.
+        """
+        consecutive_errors = 0
         while not self._stopping:
             await asyncio.sleep(self._check_interval)
             if self._stopping:
                 break
 
-            app = self._app
-            updater = app.updater if app is not None else None
-            dead = updater is None or not updater.running
-            stuck = bot_app.polling_stuck(self._stuck_threshold)
+            try:
+                app = self._app
+                updater = app.updater if app is not None else None
+                dead = updater is None or not updater.running
+                stuck = bot_app.polling_stuck(self._stuck_threshold)
 
-            if not dead and not stuck:
-                continue
+                if not dead and not stuck:
+                    consecutive_errors = 0
+                    continue
 
-            reason = (
-                "Telegram updater stopped unexpectedly"
-                if dead
-                else "Telegram polling stuck in a continuous error loop"
-            )
-            log.warning("%s — attempting in-process recovery", reason)
-            if not await self._recover(reason):
-                self._fatal(f"{reason}; recovery failed")
-                return
+                reason = (
+                    "Telegram updater stopped unexpectedly"
+                    if dead
+                    else "Telegram polling stuck in a continuous error loop"
+                )
+                log.warning("%s — attempting in-process recovery", reason)
+                if not await self._recover(reason):
+                    self._fatal(f"{reason}; recovery failed")
+                    return
+                consecutive_errors = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                consecutive_errors += 1
+                log.exception(
+                    "Supervisor liveness check failed (%d in a row) — will retry",
+                    consecutive_errors,
+                )
+                if consecutive_errors == config.ALERT_CONSECUTIVE_FAILURES:
+                    try:
+                        from core.monitoring import notify_admin
+
+                        await notify_admin(
+                            "⚠️ <b>Polling supervisor checks failing</b>\n"
+                            f"{consecutive_errors} consecutive errors — the bot may stop "
+                            "recovering itself. See server logs."
+                        )
+                    except Exception:
+                        log.exception("Failed to send supervisor alert")
 
     async def _recover(self, reason: str) -> bool:
         """Tear the current instance down and start a fresh one. True on success."""
@@ -159,6 +203,15 @@ class PollingSupervisor:
                     "%s — recovered with a fresh polling instance (restart #%d)",
                     reason, self._restarts,
                 )
+                try:
+                    from core.monitoring import _escape_html, notify_admin
+
+                    await notify_admin(
+                        "⚠️ <b>Telegram polling recovered</b>\n"
+                        f"{_escape_html(reason)} (restart #{self._restarts})"
+                    )
+                except Exception:
+                    log.exception("Failed to send recovery alert")
                 return True
         return False
 
@@ -188,10 +241,22 @@ class PollingSupervisor:
             log.exception("Error stopping the Telegram app — continuing with fresh instance")
 
     def _fatal(self, reason: str) -> None:
-        """Exit so the container supervisor restarts the stack."""
+        """Alert the admin, then exit so the container supervisor restarts the stack."""
+        global _supervisor_alive
         if self._stopping:
             return
         log.critical("%s — exiting for container restart", reason)
+        _supervisor_alive = False
+        try:
+            from core.monitoring import _escape_html, send_admin_alert_sync
+
+            send_admin_alert_sync(
+                "🚨 <b>SWE-Jobs backend is going down</b>\n"
+                f"{_escape_html(reason)}\n"
+                "Docker will restart the container automatically."
+            )
+        except Exception:
+            log.exception("Failed to send crash alert")
         self._exit(1)
 
     # ------------------------------------------------------------------
@@ -211,6 +276,6 @@ class PollingSupervisor:
             "running": not self._stopping and updater is not None and bool(updater.running),
             "restarts": self._restarts,
             "start_attempts": self._start_attempts,
-            "supervisor_alive": True,
+            "supervisor_alive": _supervisor_alive,
             **bot_app.polling_status(),
         }

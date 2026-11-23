@@ -71,6 +71,14 @@ MUSE_API_KEY: str = os.getenv("MUSE_API_KEY", "")
 
 ADMIN_TELEGRAM_ID: str = os.getenv("ADMIN_TELEGRAM_ID", "")
 
+# Crash / health alerting. These make silent failures visible in Telegram.
+# Message the admin whenever the backend (re)starts, so a crash-restart loop
+# shows up instead of failing silently.
+STARTUP_ALERT: bool = os.getenv("STARTUP_ALERT", "true").lower() in ("1", "true", "yes")
+# Alert after this many consecutive failures of the fetch pipeline, the
+# delivery scheduler, or the polling supervisor's own liveness checks.
+ALERT_CONSECUTIVE_FAILURES: int = int(os.getenv("ALERT_CONSECUTIVE_FAILURES", "3"))
+
 # =============================================================================
 # Misc
 # =============================================================================

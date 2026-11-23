@@ -24,6 +24,10 @@ services:
       - "${APP_PORT:-8000}:8000"
     env_file:
       - .env
+    labels:
+      # autoheal restarts this container when /health goes unhealthy (e.g. the
+      # Telegram polling supervisor died and nothing is recovering it).
+      - autoheal=true
     depends_on:
       db:
         condition: service_healthy
@@ -44,9 +48,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    restart: "no"
+    # Was "no": a crashed standalone bot stayed down silently.
+    restart: unless-stopped
     profiles:
       - bot
+
+  # Watches container health and restarts unhealthy containers. Without this,
+  # Docker marks a hung backend "unhealthy" but never restarts it — the bot
+  # looks alive from the outside while jobs silently stop reaching Telegram.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: "30"
+      AUTOHEAL_START_PERIOD: "60"
+      AUTOHEAL_DEFAULT_STOP_TIMEOUT: "30"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
 
 volumes:
   pgdata:

@@ -60,4 +60,6 @@ tests/               Unit and PostgreSQL integration tests
 
 ## Deployment
 
-Pushes to `main` run `.github/workflows/deploy_backend.yml`, which updates the configured VPS over SSH and rebuilds the Compose services. `.github/workflows/archive_jobs.yml` archives old delivered jobs weekly. The server's own schedulers handle recurring ingestion and Telegram delivery.
+Pushes to `main` run `.github/workflows/deploy_backend.yml`, which updates the configured VPS over SSH, rebuilds the Compose services, verifies the backend is healthy, and reports the result to the admin on Telegram (when the `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_ID` repo secrets are set). `.github/workflows/archive_jobs.yml` archives old delivered jobs weekly. The server's own schedulers handle recurring ingestion and Telegram delivery.
+
+Crash resilience: the Telegram poller is supervised and self-heals in-process, `/health` goes unhealthy when polling is down, and the Compose `autoheal` service restarts an unhealthy backend automatically. The admin gets Telegram messages on backend (re)starts, crashes, and repeated fetch/delivery failures — see [Self-hosting](docs/SELF_HOSTING.md).
