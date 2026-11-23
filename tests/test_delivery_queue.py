@@ -284,7 +284,7 @@ class TestBackoff:
 class TestReleaseDeliveryToPending:
     def test_decrements_attempts(self):
         with patch("core.delivery_queue.db._execute") as mock_exec:
-            release_delivery_to_pending(5)
+            release_delivery_to_pending(5, datetime.now(timezone.utc))
             sql = mock_exec.call_args[0][0]
             assert "attempts = GREATEST(attempts - 1, 0)" in sql
 

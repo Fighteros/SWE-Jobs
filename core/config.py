@@ -95,8 +95,19 @@ DELIVERY_RETRY_BASE_SECONDS: int = int(os.getenv("DELIVERY_RETRY_BASE_SECONDS", 
 DELIVERY_PROCESSING_LEASE_SECONDS: int = int(os.getenv("DELIVERY_PROCESSING_LEASE_SECONDS", "600"))
 DELIVERY_IDLE_SLEEP_SECONDS: int = int(os.getenv("DELIVERY_IDLE_SLEEP_SECONDS", "10"))
 DELIVERY_MAX_CYCLE_SECONDS: int = int(os.getenv("DELIVERY_MAX_CYCLE_SECONDS", "50"))
-DM_MAX_PER_USER_PER_WINDOW: int = int(os.getenv("DM_MAX_PER_USER_PER_WINDOW", "20"))
-DM_RATE_WINDOW_SECONDS: int = int(os.getenv("DM_RATE_WINDOW_SECONDS", "3600"))
+def _positive_int_env(name: str, default: int) -> int:
+    """Reject quotas that would silently defer every delivery forever."""
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+DM_MAX_PER_USER_PER_WINDOW: int = _positive_int_env("DM_MAX_PER_USER_PER_WINDOW", 20)
+DM_RATE_WINDOW_SECONDS: int = _positive_int_env("DM_RATE_WINDOW_SECONDS", 3600)
 
 # Number of 20-job pages fetched per Wuzzuf category.
 WUZZUF_MAX_PAGES: int = int(os.getenv("WUZZUF_MAX_PAGES", "3"))
