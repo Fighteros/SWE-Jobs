@@ -222,11 +222,13 @@ def claim_pending_deliveries(
     batch_size: int,
     worker_id: Optional[str] = None,
     delivery_type: Optional[str] = None,
+    exclude_ids: Optional[list[int]] = None,
 ) -> list[dict]:
     """
     Atomically claim up to batch_size due pending records.
 
     Uses FOR UPDATE SKIP LOCKED so concurrent workers cannot claim the same row.
+    Excludes records already visited by this scheduler cycle.
     Increments attempts on claim. Records that have already exhausted their
     retries are moved to dead_letter immediately instead of being claimed.
     """
@@ -239,6 +241,7 @@ def claim_pending_deliveries(
             WHERE status = %s
               AND next_attempt_at <= now()
               AND attempts < %s
+              AND NOT (id = ANY(%s::bigint[]))
               AND (%s IS NULL OR delivery_type = %s)
             ORDER BY next_attempt_at ASC, id ASC
             FOR UPDATE SKIP LOCKED
@@ -260,6 +263,7 @@ def claim_pending_deliveries(
     params = (
         STATUS_PENDING,
         DELIVERY_MAX_ATTEMPTS,
+        exclude_ids or [],
         delivery_type,
         delivery_type,
         batch_size,
@@ -319,26 +323,26 @@ def _next_attempt_at(attempts: int, retry_base_seconds: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(seconds=delay)
 
 
-def release_delivery_to_pending(delivery_id: int) -> None:
+def release_delivery_to_pending(delivery_id: int, retry_at: datetime) -> None:
     """
     Release a claimed record back to pending without penalising its attempt count.
 
     Used when a record cannot be processed right now for transient scheduling
     reasons (e.g. per-user DM rate limit reached this cycle) but should be
-    retried on the next cycle.
+    retried at the explicit DB-clock-derived retry_at, never immediately.
     """
     db._execute(
         """
         UPDATE job_deliveries
         SET status = %s,
-            next_attempt_at = now(),
+            next_attempt_at = %s,
             processing_started_at = NULL,
             worker_id = NULL,
             attempts = GREATEST(attempts - 1, 0),
             updated_at = now()
         WHERE id = %s
         """,
-        (STATUS_PENDING, delivery_id),
+        (STATUS_PENDING, retry_at, delivery_id),
     )
 
 

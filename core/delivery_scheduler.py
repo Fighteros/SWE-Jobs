@@ -61,11 +61,15 @@ async def run_delivery_cycle(
     stats["stale_recovered"] = stale_stats["recovered"]
     stats["stale_dead_lettered"] = stale_stats["dead_lettered"]
 
+    # A record can be visited only once per cycle, even if a retry becomes due
+    # immediately. Keep draining other recipients and independent group topics.
+    visited_ids: set[int] = set()
     while _budget_remaining() > 1.0:
         # Claim group-topic records first, then DM records. They are independent.
         group_records = await asyncio.to_thread(
-            _claim, batch_size, DELIVERY_TYPE_GROUP_TOPIC
+            _claim, batch_size, DELIVERY_TYPE_GROUP_TOPIC, list(visited_ids)
         )
+        visited_ids.update(r["id"] for r in group_records)
         if group_records:
             group_stats = await deliver_group_topic_records(bot, group_records)
             stats["group_topic_sent"] += group_stats.get("sent", 0)
@@ -73,8 +77,9 @@ async def run_delivery_cycle(
             stats["group_topic_skipped"] += group_stats.get("skipped", 0)
 
         dm_records = await asyncio.to_thread(
-            _claim, batch_size, DELIVERY_TYPE_SUBSCRIBER_DM
+            _claim, batch_size, DELIVERY_TYPE_SUBSCRIBER_DM, list(visited_ids)
         )
+        visited_ids.update(r["id"] for r in dm_records)
         if dm_records:
             dm_stats = await deliver_subscriber_dm_records(bot, dm_records)
             stats["dm_sent"] += dm_stats.get("sent", 0)
@@ -91,8 +96,10 @@ async def run_delivery_cycle(
     return stats
 
 
-def _claim(batch_size: int, delivery_type: str):
+def _claim(batch_size: int, delivery_type: str, exclude_ids: list[int]):
     """Synchronous wrapper so claim runs on a worker thread."""
     from core.delivery_queue import claim_pending_deliveries
 
-    return claim_pending_deliveries(batch_size, delivery_type=delivery_type)
+    return claim_pending_deliveries(
+        batch_size, delivery_type=delivery_type, exclude_ids=exclude_ids
+    )

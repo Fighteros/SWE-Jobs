@@ -415,3 +415,62 @@ class TestStats:
         assert stats["sent"] == 1
         assert stats["group_topic"]["pending"] == 1
         assert stats["subscriber_dm"]["sent"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dm_quota_defers_until_capacity_without_reclaim(fresh_db, monkeypatch):
+    """Real SQL: lowered quota uses quota-th newest send, refunds and sleeps."""
+    from unittest.mock import AsyncMock, MagicMock
+    from bot import notifications
+
+    conn = fresh_db
+    user_id = _insert_user(conn)
+    _insert_alert(conn, user_id)
+    # Three previous sends but quota is now two: the middle send must expire.
+    for i, age in enumerate([30, 20, 10]):
+        jid = _insert_job(conn, unique_id=f"https://example.com/sent-{i}")
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO job_deliveries
+                (job_id, delivery_type, recipient_key, status, sent_at)
+                VALUES (%s, 'subscriber_dm', '42', 'sent', now() - make_interval(mins := %s))""",
+                (jid, age),
+            )
+    jid = _insert_job(conn, unique_id="https://example.com/pending")
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO job_deliveries (job_id, delivery_type, recipient_key)
+            VALUES (%s, 'subscriber_dm', '42') RETURNING id""", (jid,),
+        )
+        delivery_id = cur.fetchone()[0]
+        cur.execute("SELECT sent_at + interval '1 hour' FROM job_deliveries WHERE recipient_key='42' AND status='sent' ORDER BY sent_at DESC OFFSET 1 LIMIT 1")
+        expected_retry_at = cur.fetchone()[0]
+
+    monkeypatch.setattr(notifications, "DM_MAX_PER_USER_PER_WINDOW", 2)
+    monkeypatch.setattr(notifications, "DM_RATE_WINDOW_SECONDS", 3600)
+    claimed = claim_pending_deliveries(50, delivery_type="subscriber_dm")
+    bot = MagicMock(send_message=AsyncMock(return_value=MagicMock(message_id=123)))
+    stats = await notifications.deliver_subscriber_dm_records(bot, claimed)
+    assert stats["deferred"] == 1
+    bot.send_message.assert_not_called()
+    with conn.cursor() as cur:
+        cur.execute("SELECT next_attempt_at, attempts, status FROM job_deliveries WHERE id=%s", (delivery_id,))
+        retry_at, attempts, status = cur.fetchone()
+    assert retry_at == expected_retry_at
+    assert attempts == 0 and status == "pending"
+    assert claim_pending_deliveries(50, delivery_type="subscriber_dm") == []
+    # Fast-forward DB state without sleeping. A due record can now be claimed,
+    # but the same-cycle ID guard must still exclude it.
+    with conn.cursor() as cur:
+        cur.execute("UPDATE job_deliveries SET next_attempt_at=now() - interval '1 second' WHERE id=%s", (delivery_id,))
+    assert claim_pending_deliveries(50, exclude_ids=[delivery_id]) == []
+    ready = claim_pending_deliveries(50)
+    assert [r["id"] for r in ready] == [delivery_id]
+    with conn.cursor() as cur:
+        cur.execute("UPDATE job_deliveries SET sent_at=sent_at - interval '1 hour' WHERE status='sent'")
+    stats = await notifications.deliver_subscriber_dm_records(bot, ready)
+    assert stats["sent"] == 1 and stats["deferred"] == 0
+    bot.send_message.assert_awaited_once()
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM job_deliveries WHERE id=%s", (delivery_id,))
+        assert cur.fetchone()[0] == "sent"
