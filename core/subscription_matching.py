@@ -62,6 +62,14 @@ def job_matches_alert(job: Job, alert: dict) -> bool:
         if not any(kw.lower() in title_lower for kw in sub_keywords):
             return False
 
+    # Check minimum salary: exclude only when the posting states a salary
+    # below the floor; jobs without salary information are kept.
+    min_salary = alert.get("min_salary")
+    if min_salary:
+        stated = job.salary_max if job.salary_max is not None else job.salary_min
+        if stated is not None and stated < min_salary:
+            return False
+
     return True
 
 

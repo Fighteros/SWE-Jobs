@@ -28,6 +28,7 @@ cp .env.example .env
 Set in `.env`:
 
 ```bash
+STACK=swejobs-imessage             # scopes the autoheal label to this stack
 DB_PASSWORD=<new random password for this stack's database>
 APP_PORT=8001                      # existing stack already publishes 8000
 DELIVERY_CHANNEL=imessage
@@ -68,7 +69,7 @@ bot can message it. From your iPhone: text anything to the Photon number,
 then send `/help`. Create your first alert, for example:
 
 ```
-/alert add seniority=mid,senior locations=remote,EG keywords=python
+/alert add seniority=mid,senior locations=remote,EG keywords=python min_salary=60000
 ```
 
 Matching new jobs then arrive as iMessages.
@@ -85,6 +86,12 @@ docker compose -p swejobs-imessage --profile imessage up -d --build
 
 - The two stacks are independent: each fetches and stores its own copy of
   jobs in its own database. Nothing is shared.
+- Autoheal isolation: the backend's autoheal label is `autoheal-$STACK`, and
+  each stack's autoheal only watches that label. With `STACK=swejobs-imessage`
+  here (and the default `swejobs` elsewhere), neither stack's autoheal can
+  see or restart the other's containers. The existing stack picks its new
+  `autoheal-swejobs` label up on its next `up -d`; until then it keeps
+  working under its old label.
 - Ports: existing stack keeps 8000; this stack uses 8001 (only needed if you
   want the API reachable from outside the compose network).
 - Live iMessage delivery requires the Spectrum credentials above; without
