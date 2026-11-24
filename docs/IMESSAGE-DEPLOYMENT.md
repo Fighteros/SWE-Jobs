@@ -68,7 +68,7 @@ bot can message it. From your iPhone: text anything to the Photon number,
 then send `/help`. Create your first alert, for example:
 
 ```
-/alert add topics=backend,ai_ml seniority=mid,senior locations=remote,EG
+/alert add seniority=mid,senior locations=remote,EG keywords=python
 ```
 
 Matching new jobs then arrive as iMessages.

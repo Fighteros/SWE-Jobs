@@ -8,8 +8,8 @@ handle_inbound(); the returned text is sent back as the reply.
 Commands:
   /start, /help                     — usage
   /alerts                           — list your alerts
-  /alert add topics=.. seniority=.. locations=.. sources=.. keywords=.. min_salary=..
-                                    — create an alert (topics required)
+  /alert add seniority=.. locations=.. sources=.. keywords=.. min_salary=..
+                                    — create an alert (all filters optional)
   /alert remove N | all             — delete alert #N (or every alert)
   /alert pause N                    — stop DMs for alert #N
   /alert resume N                   — resume DMs for alert #N
@@ -26,13 +26,9 @@ from bot.keyboards import LOCATION_OPTIONS, SOURCE_OPTIONS
 
 log = logging.getLogger(__name__)
 
-VALID_TOPICS = {
-    "general", "backend", "frontend", "fullstack", "mobile", "devops", "qa",
-    "ai_ml", "cybersecurity", "gamedev", "blockchain", "erp",
-    "marketing_sales", "hr_recruiting", "finance_accounting",
-    "admin_operations", "customer_support", "product_pm",
-    "internships", "egypt", "saudi",
-}
+# The iMessage flow has no topics/groups/channels: alerts internally carry
+# the existing {"general"} wildcard (see core.subscription_matching), so every
+# job is a candidate and the remaining filters decide the match.
 VALID_SENIORITY = {"intern", "junior", "mid", "senior", "lead", "executive"}
 VALID_LOCATIONS = {key for key, _ in LOCATION_OPTIONS}
 VALID_SOURCES = {key for key, _ in SOURCE_OPTIONS}
@@ -41,8 +37,8 @@ HELP_TEXT = """👋 SWE-Jobs over iMessage
 
 I send you only the jobs that match your saved alerts.
 
-/alert add topics=backend,ai_ml seniority=mid,senior locations=remote,EG keywords=python min_salary=60000
-  Create an alert. topics is required; the rest are optional.
+/alert add seniority=mid,senior locations=remote,EG keywords=python min_salary=60000
+  Create an alert. All filters are optional.
 /alerts
   Show your alerts.
 /alert remove 2
@@ -52,7 +48,6 @@ I send you only the jobs that match your saved alerts.
 /help
   This message.
 
-topics: general, backend, frontend, fullstack, mobile, devops, qa, ai_ml, cybersecurity, gamedev, blockchain, erp, marketing_sales, hr_recruiting, finance_accounting, admin_operations, customer_support, product_pm, internships, egypt, saudi
 seniority: intern, junior, mid, senior, lead, executive
 locations: remote, EG, SA, AE, US, GB, DE, CA, NL, IN, FR, PL, TR
 sources: linkedin, indeed, glassdoor, remotive, remoteok, wwr, himalayas, arbeitnow, jobicy, workingnomads, adzuna, themuse, jooble, reed, findwork, usajobs, devitjobs, greenhouse, lever, workable, recruitee, ashby, smartrecruiters"""
@@ -72,24 +67,20 @@ def _parse_add_args(args: list[str]) -> tuple[dict | None, str | None]:
     Returns (alert, error_message); exactly one is not None.
     """
     alert: dict = {
-        "topics": [], "seniority": [], "locations": [],
+        "topics": ["general"], "seniority": [], "locations": [],
         "sources": [], "keywords": [], "min_salary": None,
     }
     seen: set[str] = set()
     for token in args:
         if "=" not in token:
-            return None, f"Did not understand '{token}'. Use key=value pairs, e.g. topics=backend seniority=mid"
+            return None, f"Did not understand '{token}'. Use key=value pairs, e.g. seniority=mid locations=remote"
         key, _, value = token.partition("=")
         key = key.strip().lower()
         if key in seen:
             return None, f"'{key}' given twice."
         seen.add(key)
         if key == "topics":
-            topics = [t.lower() for t in _split_csv(value)]
-            bad = _invalid(topics, VALID_TOPICS)
-            if bad:
-                return None, f"Unknown topics: {', '.join(bad)}"
-            alert["topics"] = topics
+            return None, "The iMessage bot has no topics — just drop that part. Example: /alert add seniority=mid locations=remote"
         elif key == "seniority":
             levels = [s.lower() for s in _split_csv(value)]
             bad = _invalid(levels, VALID_SENIORITY)
@@ -119,16 +110,14 @@ def _parse_add_args(args: list[str]) -> tuple[dict | None, str | None]:
             except ValueError:
                 return None, f"min_salary must be a positive number, got '{value}'."
         else:
-            return None, f"Unknown option '{key}'. Options: topics, seniority, locations, sources, keywords, min_salary"
-    if not alert["topics"]:
-        return None, "topics is required. Example: /alert add topics=backend seniority=mid"
+            return None, f"Unknown option '{key}'. Options: seniority, locations, sources, keywords, min_salary"
     return alert, None
 
 
 def _describe_alert(a: dict) -> str:
     lines = [f"#{a['position']}"]
-    if a.get("topics"):
-        lines.append(f"topics: {', '.join(a['topics'])}")
+    # topics are not shown: iMessage alerts always carry the internal
+    # {"general"} wildcard, which is not a user-facing filter here.
     if a.get("seniority"):
         lines.append(f"seniority: {', '.join(a['seniority'])}")
     if a.get("locations"):
@@ -160,7 +149,7 @@ async def handle_inbound(address: str, text: str) -> str:
     if cmd == "/alerts":
         alerts = await asyncio.to_thread(db.get_user_alerts, user["id"])
         if not alerts:
-            return "You have no alerts yet. Create one with:\n/alert add topics=backend seniority=mid"
+            return "You have no alerts yet. Create one with:\n/alert add seniority=mid locations=remote"
         cards = "\n\n".join(_describe_alert(a) for a in alerts)
         return f"📋 Your alerts ({len(alerts)}):\n\n{cards}"
 

@@ -32,17 +32,18 @@ def test_unknown_command():
 def test_alert_add_saves_valid_alert():
     with patch("bot.imessage_commands.db.create_user_alert", return_value=99) as create, \
          patch("bot.imessage_commands.db.get_user_alerts", return_value=[
-             {"position": 1, "topics": ["backend"], "seniority": ["mid"],
+             {"position": 1, "topics": ["general"], "seniority": ["mid"],
               "locations": ["remote"], "sources": [], "keywords": ["python"],
               "min_salary": 60000, "dm_enabled": True},
          ]):
         reply = run(imessage_commands.handle_inbound(
             "+201099599616",
-            "/alert add topics=backend seniority=mid locations=remote keywords=python min_salary=60000",
+            "/alert add seniority=mid locations=remote keywords=python min_salary=60000",
         ))
 
     alert = create.call_args.args[1]
-    assert alert["topics"] == ["backend"]
+    # No user-facing topics: the internal {"general"} wildcard matches all jobs.
+    assert alert["topics"] == ["general"]
     assert alert["seniority"] == ["mid"]
     assert alert["locations"] == ["remote"]
     assert alert["keywords"] == ["python"]
@@ -50,30 +51,33 @@ def test_alert_add_saves_valid_alert():
     assert "Alert #1 saved" in reply
 
 
-def test_alert_add_requires_topics():
+def test_alert_add_works_with_no_filters():
+    with patch("bot.imessage_commands.db.create_user_alert", return_value=1) as create, \
+         patch("bot.imessage_commands.db.get_user_alerts", return_value=[
+             {"position": 1, "topics": ["general"], "dm_enabled": True},
+         ]):
+        reply = run(imessage_commands.handle_inbound("+201099599616", "/alert add"))
+    create.assert_called_once()
+    assert "Alert #1 saved" in reply
+
+
+def test_alert_add_rejects_topics_option():
     with patch("bot.imessage_commands.db.create_user_alert") as create:
         reply = run(imessage_commands.handle_inbound(
-            "+201099599616", "/alert add seniority=mid"
+            "+201099599616", "/alert add topics=backend"
         ))
     create.assert_not_called()
-    assert "topics is required" in reply
-
-
-def test_alert_add_rejects_unknown_topic():
-    reply = run(imessage_commands.handle_inbound(
-        "+201099599616", "/alert add topics=backend,notatopic"
-    ))
-    assert "Unknown topics: notatopic" in reply
+    assert "no topics" in reply
 
 
 def test_alert_add_rejects_unknown_seniority_and_location():
     reply = run(imessage_commands.handle_inbound(
-        "+201099599616", "/alert add topics=backend seniority=boss"
+        "+201099599616", "/alert add seniority=boss"
     ))
     assert "Unknown seniority: boss" in reply
 
     reply = run(imessage_commands.handle_inbound(
-        "+201099599616", "/alert add topics=backend locations=ZZ"
+        "+201099599616", "/alert add locations=ZZ"
     ))
     assert "Unknown locations: ZZ" in reply
 
@@ -81,13 +85,12 @@ def test_alert_add_rejects_unknown_seniority_and_location():
 def test_alert_add_normalizes_case():
     with patch("bot.imessage_commands.db.create_user_alert", return_value=1) as create, \
          patch("bot.imessage_commands.db.get_user_alerts", return_value=[
-             {"position": 1, "topics": ["backend"], "dm_enabled": True},
+             {"position": 1, "topics": ["general"], "dm_enabled": True},
          ]):
         run(imessage_commands.handle_inbound(
-            "+201099599616", "/alert add topics=BACKEND locations=eg,remote"
+            "+201099599616", "/alert add locations=eg,remote"
         ))
     alert = create.call_args.args[1]
-    assert alert["topics"] == ["backend"]
     assert alert["locations"] == ["EG", "remote"]
 
 
@@ -97,7 +100,7 @@ def test_alerts_empty_and_list():
     assert "no alerts" in reply.lower()
 
     with patch("bot.imessage_commands.db.get_user_alerts", return_value=[
-        {"position": 1, "topics": ["backend", "ai_ml"], "dm_enabled": True},
+        {"position": 1, "topics": ["general"], "dm_enabled": True},
         {"position": 2, "topics": ["general"], "dm_enabled": False},
     ]):
         reply = run(imessage_commands.handle_inbound("+201099599616", "/alerts"))
