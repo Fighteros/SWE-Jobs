@@ -22,22 +22,16 @@ cd swe-jobs-imessage
 ## 2. Configure .env
 
 ```bash
-cp .env.example .env
+cp -n .env.imessage.example .env
 ```
 
-Set in `.env`:
-
-```bash
-STACK=swejobs-imessage             # scopes the autoheal label to this stack
-DB_PASSWORD=<new random password for this stack's database>
-APP_PORT=8001                      # existing stack already publishes 8000
-DELIVERY_CHANNEL=imessage
-SPECTRUM_PROJECT_ID=<from https://app.photon.codes project settings>
-SPECTRUM_PROJECT_SECRET=<from https://app.photon.codes project settings>
-IMESSAGE_WEBHOOK_SECRET=<generate with openssl rand -hex 32>
-IMESSAGE_SIDECAR_URL=http://imessage-sidecar:8789
-IMESSAGE_RECIPIENTS=<your iMessage number, e.g. +201099599616>   # admin alerts only
-```
+The dedicated template sets the iMessage Compose project, profile, isolated
+port `8001`, delivery channel, and sidecar URL. Edit `.env` to set `DB_PASSWORD`,
+`SPECTRUM_PROJECT_ID`, `SPECTRUM_PROJECT_SECRET`, and `IMESSAGE_WEBHOOK_SECRET`
+(generate the latter with `openssl rand -hex 32`). Optionally set
+`IMESSAGE_RECIPIENTS` for admin alerts. If `.env` already exists, `cp -n` keeps
+it unchanged: merge the missing settings into it without replacing its current
+secrets or changing the password of a database that's already initialized.
 
 No Telegram settings are needed in this mode. TELEGRAM_BOT_TOKEN /
 TELEGRAM_GROUP_ID can stay unset: no Telegram polling, no group broadcast.
