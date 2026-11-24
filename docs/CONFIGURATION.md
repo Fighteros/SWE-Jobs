@@ -90,6 +90,30 @@ Sources that don't require keys: Remotive, Himalayas, Jobicy, RemoteOK, Arbeitno
 | `STARTUP_ALERT` | Message the admin on every backend (re)start | `true` |
 | `ALERT_CONSECUTIVE_FAILURES` | Alert after this many consecutive fetch / delivery / supervisor failures | `3` |
 | `ALERT_CIRCUIT_COOLDOWN_HOURS` | Minimum hours between "circuit breaker open" alerts for the same source while it stays broken; the first open and the recovery always alert | `6` |
+| `DELIVERY_CHANNEL` | `telegram` (default) or `imessage`. `imessage` delivers preference-matched jobs to each registered iMessage user (and admin alerts to `IMESSAGE_RECIPIENTS`) via Photon Spectrum instead of Telegram; the Telegram bot, group broadcast, and Telegram subscriber DMs are disabled in that mode | `telegram` |
+| `SPECTRUM_PROJECT_ID` | Spectrum project id from https://app.photon.codes (used by the sidecar) | — |
+| `SPECTRUM_PROJECT_SECRET` | Spectrum project secret from https://app.photon.codes (used by the sidecar) | — |
+| `IMESSAGE_SIDECAR_URL` | Loopback URL of the imessage sidecar; in docker compose: `http://imessage-sidecar:8789` | `http://localhost:8789` |
+| `IMESSAGE_RECIPIENTS` | Comma-separated iMessage addresses (E.164 phone and/or email) that receive **admin alerts**. Job deliveries are per-user, not broadcast | — |
+| `IMESSAGE_REQUEST_TIMEOUT` | Seconds per sidecar HTTP request | `15` |
+
+### iMessage mode (Photon Spectrum)
+
+iMessage delivery uses Photon Spectrum, the managed service the Hermes agent
+uses for iMessage. Spectrum has no plain REST send endpoint — sending and
+receiving go through the `spectrum-ts` SDK over a persistent connection — so
+the repo ships a small Node sidecar (`sidecar/`) that owns that connection and
+exposes a loopback HTTP API to the backend (the same architecture Hermes uses).
+
+1. Create a Photon account at https://app.photon.codes and a Spectrum project;
+   copy the project id and secret into `SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET`.
+2. Set `DELIVERY_CHANNEL=imessage` and `IMESSAGE_SIDECAR_URL=http://imessage-sidecar:8789`.
+3. Start everything: `docker compose --profile imessage up -d`.
+
+Users text the deployed number, then save alerts with `/alert add ...` and get
+only matching jobs (same `user_alerts` matching as the Telegram bot). On
+Photon's free shared line, a recipient must text the line once before the bot
+can message that number.
 
 Seed mode is useful for the first run — it populates the database without flooding the Telegram group with existing jobs.
 

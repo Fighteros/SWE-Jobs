@@ -24,10 +24,14 @@ services:
       - "${APP_PORT:-8000}:8000"
     env_file:
       - .env
+    environment:
+      DELIVERY_CHANNEL: ${DELIVERY_CHANNEL:-telegram}
     labels:
       # autoheal restarts this container when /health goes unhealthy (e.g. the
       # Telegram polling supervisor died and nothing is recovering it).
-      - autoheal=true
+      # The label is scoped per stack (STACK in .env) so two stacks on the
+      # same host never watch or restart each other's containers.
+      - autoheal-${STACK:-swejobs}=true
     depends_on:
       db:
         condition: service_healthy
@@ -59,7 +63,8 @@ services:
   autoheal:
     image: willfarrell/autoheal:latest
     environment:
-      AUTOHEAL_CONTAINER_LABEL: autoheal
+      # Scoped per stack: must match the backend label above.
+      AUTOHEAL_CONTAINER_LABEL: autoheal-${STACK:-swejobs}
       AUTOHEAL_INTERVAL: "30"
       AUTOHEAL_START_PERIOD: "60"
       AUTOHEAL_DEFAULT_STOP_TIMEOUT: "30"
@@ -67,5 +72,30 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
+  # Photon Spectrum sidecar for DELIVERY_CHANNEL=imessage. Holds the
+  # spectrum-ts persistent connection (iMessage send/receive) and exposes a
+  # loopback HTTP API to the backend. Opt-in: run with
+  #   docker compose --profile imessage up -d
+  imessage-sidecar:
+    build: ./sidecar
+    environment:
+      SPECTRUM_PROJECT_ID: ${SPECTRUM_PROJECT_ID:-}
+      SPECTRUM_PROJECT_SECRET: ${SPECTRUM_PROJECT_SECRET:-}
+      IMESSAGE_WEBHOOK_SECRET: ${IMESSAGE_WEBHOOK_SECRET:-}
+      INBOUND_FORWARD_URL: http://backend:8000/imessage/inbound
+      PORT: "8789"
+    volumes:
+      - imessage_inbound:/var/lib/swejobs/inbound
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8789/health', {signal: AbortSignal.timeout(3000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    # No ports published — only reachable inside the compose network.
+    profiles:
+      - imessage
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  imessage_inbound:

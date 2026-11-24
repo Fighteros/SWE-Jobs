@@ -1,0 +1,14 @@
+{
+  "name": "swe-jobs-imessage-sidecar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Photon Spectrum (spectrum-ts) sidecar: sends/receives iMessages and exposes a loopback HTTP API for the Python backend.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "spectrum-ts": "^12.16.0"
+  }
+}

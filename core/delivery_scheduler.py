@@ -45,6 +45,8 @@ async def run_delivery_cycle(
     def _budget_remaining() -> float:
         return max_cycle_seconds - (time.monotonic() - start)
 
+    use_imessage = config.DELIVERY_CHANNEL == "imessage"
+
     stats = {
         "stale_recovered": 0,
         "stale_dead_lettered": 0,
@@ -65,26 +67,38 @@ async def run_delivery_cycle(
     # immediately. Keep draining other recipients and independent group topics.
     visited_ids: set[int] = set()
     while _budget_remaining() > 1.0:
-        # Claim group-topic records first, then DM records. They are independent.
-        group_records = await asyncio.to_thread(
-            _claim, batch_size, DELIVERY_TYPE_GROUP_TOPIC, list(visited_ids)
-        )
-        visited_ids.update(r["id"] for r in group_records)
-        if group_records:
-            group_stats = await deliver_group_topic_records(bot, group_records)
-            stats["group_topic_sent"] += group_stats.get("sent", 0)
-            stats["group_topic_failed"] += group_stats.get("failed", 0)
-            stats["group_topic_skipped"] += group_stats.get("skipped", 0)
+        group_records = []
+        if not use_imessage:
+            # Claim group-topic records first, then DM records. They are
+            # independent. iMessage mode has no group/channel/topic delivery
+            # at all (personalized DMs only), so it is never claimed.
+            group_records = await asyncio.to_thread(
+                _claim, batch_size, DELIVERY_TYPE_GROUP_TOPIC, list(visited_ids)
+            )
+            visited_ids.update(r["id"] for r in group_records)
+            if group_records:
+                group_stats = await deliver_group_topic_records(bot, group_records)
+                stats["group_topic_sent"] += group_stats.get("sent", 0)
+                stats["group_topic_failed"] += group_stats.get("failed", 0)
+                stats["group_topic_skipped"] += group_stats.get("skipped", 0)
 
         dm_records = await asyncio.to_thread(
             _claim, batch_size, DELIVERY_TYPE_SUBSCRIBER_DM, list(visited_ids)
         )
         visited_ids.update(r["id"] for r in dm_records)
         if dm_records:
-            dm_stats = await deliver_subscriber_dm_records(bot, dm_records)
-            stats["dm_sent"] += dm_stats.get("sent", 0)
-            stats["dm_failed"] += dm_stats.get("failed", 0)
-            stats["dm_deferred"] += dm_stats.get("deferred", 0)
+            if use_imessage:
+                # Personalized deliveries: each iMessage subscriber's own
+                # matched jobs, sent via the Photon Spectrum sidecar.
+                from bot.imessage_sender import deliver_imessage_records
+                dm_stats = await deliver_imessage_records(dm_records)
+                stats["dm_sent"] += dm_stats.get("sent", 0)
+                stats["dm_failed"] += dm_stats.get("failed", 0)
+            else:
+                dm_stats = await deliver_subscriber_dm_records(bot, dm_records)
+                stats["dm_sent"] += dm_stats.get("sent", 0)
+                stats["dm_failed"] += dm_stats.get("failed", 0)
+                stats["dm_deferred"] += dm_stats.get("deferred", 0)
 
         if not group_records and not dm_records:
             break
