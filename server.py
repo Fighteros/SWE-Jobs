@@ -19,6 +19,7 @@ from core.config import (
     FETCH_INTERVAL_MINUTES,
     DELIVERY_INTERVAL_SECONDS,
     DELIVERY_IDLE_SLEEP_SECONDS,
+    IMESSAGE_SIDECAR_URL,
     STARTUP_ALERT,
     TELEGRAM_BOT_TOKEN,
 )
@@ -87,10 +88,10 @@ async def _delivery_loop():
     use_imessage = DELIVERY_CHANNEL == "imessage"
     channel_label = "iMessage" if use_imessage else "Telegram"
 
-    if use_imessage and not _imessage.configured():
+    if use_imessage and not IMESSAGE_SIDECAR_URL:
         log.warning(
-            "DELIVERY_CHANNEL=imessage but IMESSAGE_SIDECAR_URL/"
-            "IMESSAGE_RECIPIENTS are not set — delivery scheduler will sleep forever"
+            "DELIVERY_CHANNEL=imessage but IMESSAGE_SIDECAR_URL is not set "
+            "— delivery scheduler will sleep forever"
         )
         while True:
             await asyncio.sleep(DELIVERY_INTERVAL_SECONDS)

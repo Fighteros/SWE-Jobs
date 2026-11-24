@@ -67,21 +67,20 @@ async def run_delivery_cycle(
     # immediately. Keep draining other recipients and independent group topics.
     visited_ids: set[int] = set()
     while _budget_remaining() > 1.0:
-        # Claim group-topic records first, then DM records. They are independent.
-        group_records = await asyncio.to_thread(
-            _claim, batch_size, DELIVERY_TYPE_GROUP_TOPIC, list(visited_ids)
-        )
-        visited_ids.update(r["id"] for r in group_records)
-        if group_records:
-            if use_imessage:
-                # The iMessage mode never enqueues group-topic records
-                # (see delivery_queue); skip defensively if any exist.
-                group_stats = {"sent": 0, "failed": 0, "skipped": len(group_records)}
-            else:
+        group_records = []
+        if not use_imessage:
+            # Claim group-topic records first, then DM records. They are
+            # independent. iMessage mode has no group/channel/topic delivery
+            # at all (personalized DMs only), so it is never claimed.
+            group_records = await asyncio.to_thread(
+                _claim, batch_size, DELIVERY_TYPE_GROUP_TOPIC, list(visited_ids)
+            )
+            visited_ids.update(r["id"] for r in group_records)
+            if group_records:
                 group_stats = await deliver_group_topic_records(bot, group_records)
-            stats["group_topic_sent"] += group_stats.get("sent", 0)
-            stats["group_topic_failed"] += group_stats.get("failed", 0)
-            stats["group_topic_skipped"] += group_stats.get("skipped", 0)
+                stats["group_topic_sent"] += group_stats.get("sent", 0)
+                stats["group_topic_failed"] += group_stats.get("failed", 0)
+                stats["group_topic_skipped"] += group_stats.get("skipped", 0)
 
         dm_records = await asyncio.to_thread(
             _claim, batch_size, DELIVERY_TYPE_SUBSCRIBER_DM, list(visited_ids)

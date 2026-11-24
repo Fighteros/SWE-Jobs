@@ -197,8 +197,8 @@ def test_scheduler_routes_dm_records_to_imessage_and_skips_group_topics():
                    new=AsyncMock()) as tg_deliver, \
              patch("core.delivery_scheduler.deliver_subscriber_dm_records",
                    new=AsyncMock()) as dm_deliver:
-            # First pass: one DM record, no group records; second pass: nothing.
-            claim.side_effect = [[], records, [], []]
+            # First DM claim returns one record; second returns nothing.
+            claim.side_effect = [records, []]
             stats = await delivery_scheduler.run_delivery_cycle(None, max_cycle_seconds=30)
             return stats, im_deliver, tg_deliver, dm_deliver, claim
 
@@ -207,6 +207,8 @@ def test_scheduler_routes_dm_records_to_imessage_and_skips_group_topics():
     im_deliver.assert_awaited_once()
     tg_deliver.assert_not_awaited()
     dm_deliver.assert_not_awaited()
+    # Group topics are never claimed in imessage mode: DM claims only.
+    assert all(c.args[1] == "subscriber_dm" for c in claim.call_args_list)
     assert stats["dm_sent"] == 1
     assert stats["group_topic_sent"] == 0
 
