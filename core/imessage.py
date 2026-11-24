@@ -1,14 +1,17 @@
 """
-core/imessage.py — iMessage delivery via the Photon Advanced iMessage HTTP API.
+core/imessage.py — iMessage delivery via the Photon Spectrum sidecar.
 
-Photon exposes a small REST surface (see photon.codes/docs, "Advanced iMessage
-SDK", HTTP transport): bearer-token auth, chats are created once per recipient
-to obtain a server chat guid, then text messages are posted to that chat.
+Sending iMessages through Photon Spectrum requires the spectrum-ts SDK's
+persistent connection (TypeScript only), so this repo ships a small Node
+sidecar (sidecar/) that holds that connection and exposes a loopback HTTP
+API. This module is the Python client for it — the same sidecar pattern the
+Hermes agent uses to talk to Photon.
 
 This module is synchronous (requests) so it works from async code via
 asyncio.to_thread and from sync crash-alert paths alike.
 """
 
+import hashlib
 import html
 import logging
 import re
@@ -17,83 +20,34 @@ import requests
 
 from core.config import (
     IMESSAGE_RECIPIENTS,
-    PHOTON_REQUEST_TIMEOUT,
-    PHOTON_SERVER_ADDRESS,
-    PHOTON_TOKEN,
+    IMESSAGE_REQUEST_TIMEOUT,
+    IMESSAGE_SIDECAR_URL,
 )
 
 log = logging.getLogger(__name__)
 
-# Photon chat service type for iMessage (CHAT_SERVICE_TYPE_IMESSAGE).
-_CHAT_SERVICE_IMESSAGE = 1
-
-# Per-process cache: recipient address -> Photon chat guid.
-_chat_guid_cache: dict[str, str] = {}
-
 
 def configured() -> bool:
-    """True when iMessage delivery has everything it needs to run."""
-    return bool(PHOTON_SERVER_ADDRESS and PHOTON_TOKEN and IMESSAGE_RECIPIENTS)
+    """True when iMessage admin alerts have somewhere to go."""
+    return bool(IMESSAGE_SIDECAR_URL and IMESSAGE_RECIPIENTS)
 
 
-def _base_url() -> str:
-    address = PHOTON_SERVER_ADDRESS.strip().rstrip("/")
-    if not address.startswith(("http://", "https://")):
-        # Bare host[:port] defaults to https, matching the Photon SDK.
-        address = f"https://{address}"
-    return address
-
-
-def _headers() -> dict:
-    return {
-        "Authorization": f"Bearer {PHOTON_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-
-def get_chat_guid(address: str) -> str:
-    """
-    Resolve a recipient (phone or email) to a Photon chat guid, creating the
-    chat on first use. Cached for the process lifetime.
-    """
-    cached = _chat_guid_cache.get(address)
-    if cached:
-        return cached
-
+def send_text(address: str, text: str) -> None:
+    """Send one plain-text iMessage to a recipient via the sidecar."""
     resp = requests.post(
-        f"{_base_url()}/v1/chats",
-        headers=_headers(),
-        json={"addresses": [address], "service": _CHAT_SERVICE_IMESSAGE},
-        timeout=PHOTON_REQUEST_TIMEOUT,
+        f"{IMESSAGE_SIDECAR_URL.rstrip('/')}/send",
+        json={"to": address, "text": text},
+        timeout=IMESSAGE_REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
     payload = resp.json()
-    chat = payload.get("chat") or {}
-    guid = chat.get("guid")
-    if not guid:
-        raise RuntimeError(f"Photon chat create returned no chat.guid: {payload!r:.200}")
-    _chat_guid_cache[address] = guid
-    return guid
-
-
-def send_text(address: str, text: str) -> str:
-    """Send one plain-text iMessage to a recipient. Returns the message guid."""
-    chat_guid = get_chat_guid(address)
-    resp = requests.post(
-        f"{_base_url()}/v1/messages:sendText",
-        headers=_headers(),
-        json={"chatGuid": chat_guid, "text": text},
-        timeout=PHOTON_REQUEST_TIMEOUT,
-    )
-    resp.raise_for_status()
-    payload = resp.json()
-    message = payload.get("message") or {}
-    return message.get("guid", "")
+    if not payload.get("ok"):
+        raise RuntimeError(f"sidecar send failed: {payload!r:.200}")
 
 
 def send_to_recipients(text: str) -> dict:
     """
-    Send a plain-text message to every configured iMessage recipient.
+    Send a plain-text message to every configured iMessage (admin) recipient.
 
     Never raises: per-recipient failures are logged and counted so one bad
     address does not block the rest.
@@ -107,6 +61,24 @@ def send_to_recipients(text: str) -> dict:
             stats["failed"] += 1
             log.error(f"iMessage send failed for {address}: {e}")
     return stats
+
+
+def imessage_user_telegram_id(address: str) -> int:
+    """
+    Stable synthetic users.telegram_id for an iMessage address.
+
+    The users/user_alerts schema is keyed on Telegram's BIGINT ids. iMessage
+    users get a deterministic NEGATIVE id derived from their address so they
+    share the exact same preference and matching tables as Telegram users
+    without colliding with real Telegram ids (always positive).
+    """
+    digest = hashlib.sha256(f"imessage:{address.strip().lower()}".encode()).digest()
+    return -(int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF)
+
+
+def is_imessage_user(telegram_id: int) -> bool:
+    """Synthetic iMessage user ids are negative; real Telegram ids are positive."""
+    return telegram_id < 0
 
 
 _LINK_RE = re.compile(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL)

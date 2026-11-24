@@ -72,16 +72,24 @@ MUSE_API_KEY: str = os.getenv("MUSE_API_KEY", "")
 ADMIN_TELEGRAM_ID: str = os.getenv("ADMIN_TELEGRAM_ID", "")
 
 # =============================================================================
-# iMessage delivery (Photon) — used when DELIVERY_CHANNEL=imessage
+# iMessage delivery (Photon Spectrum) — used when DELIVERY_CHANNEL=imessage
 # =============================================================================
 # Which channel job deliveries and admin alerts go out on. "telegram" is the
-# original bot; "imessage" sends everything to IMESSAGE_RECIPIENTS through a
-# Photon Advanced iMessage server instead.
+# original bot; "imessage" delivers personalized (preference-matched) jobs
+# and admin alerts over iMessage through the Photon Spectrum sidecar
+# (sidecar/ — a small Node service wrapping the spectrum-ts SDK, the same
+# service and architecture the Hermes agent uses for iMessage).
 DELIVERY_CHANNEL: str = os.getenv("DELIVERY_CHANNEL", "telegram").strip().lower()
-PHOTON_SERVER_ADDRESS: str = os.getenv("PHOTON_SERVER_ADDRESS", "")  # host[:port] or full URL
-PHOTON_TOKEN: str = os.getenv("PHOTON_TOKEN", "")                   # bearer token for the Photon server
-PHOTON_REQUEST_TIMEOUT: int = int(os.getenv("PHOTON_REQUEST_TIMEOUT", "15"))  # seconds
-# Comma-separated iMessage recipients: E.164 phone numbers and/or emails.
+# Loopback URL of the imessage sidecar (docker-compose service "imessage-sidecar").
+IMESSAGE_SIDECAR_URL: str = os.getenv("IMESSAGE_SIDECAR_URL", "http://localhost:8789")
+IMESSAGE_REQUEST_TIMEOUT: int = int(os.getenv("IMESSAGE_REQUEST_TIMEOUT", "15"))  # seconds
+# Sidecar credentials: Spectrum project id + secret from app.photon.codes
+# (consumed by the sidecar, not the Python app; listed here for .env parity).
+SPECTRUM_PROJECT_ID: str = os.getenv("SPECTRUM_PROJECT_ID", "")
+SPECTRUM_PROJECT_SECRET: str = os.getenv("SPECTRUM_PROJECT_SECRET", "")
+# Comma-separated iMessage addresses (E.164 phone and/or email) that receive
+# ADMIN ALERTS (startup/crash/circuit-breaker). Job deliveries are personal:
+# they go to each registered iMessage user with matching saved alerts.
 IMESSAGE_RECIPIENTS: list[str] = [
     addr.strip() for addr in os.getenv("IMESSAGE_RECIPIENTS", "").split(",") if addr.strip()
 ]

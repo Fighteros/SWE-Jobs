@@ -6,17 +6,9 @@ import pytest
 from core import imessage
 
 
-@pytest.fixture(autouse=True)
-def _clear_chat_cache():
-    imessage._chat_guid_cache.clear()
-    yield
-    imessage._chat_guid_cache.clear()
-
-
 @pytest.fixture
-def photon_env():
-    with patch("core.imessage.PHOTON_SERVER_ADDRESS", "imessage.example.com:443"), \
-         patch("core.imessage.PHOTON_TOKEN", "tok-123"), \
+def sidecar_env():
+    with patch("core.imessage.IMESSAGE_SIDECAR_URL", "http://sidecar:8789"), \
          patch("core.imessage.IMESSAGE_RECIPIENTS", ["+201099599616", "a@b.com"]):
         yield
 
@@ -40,42 +32,30 @@ def test_html_to_plain_expands_links():
     assert imessage.html_to_plain(html) == "🔗 Apply Now: https://x.dev/job/1"
 
 
-# --- Photon client -----------------------------------------------------------
+# --- Sidecar client ----------------------------------------------------------
 
-def test_chat_guid_is_created_once_and_cached(photon_env):
+def test_send_text_posts_to_sidecar_send_endpoint(sidecar_env):
     with patch("core.imessage.requests.post") as post:
-        post.return_value = _mock_response({"chat": {"guid": "any;-;+201099599616"}})
-        guid1 = imessage.get_chat_guid("+201099599616")
-        guid2 = imessage.get_chat_guid("+201099599616")
+        post.return_value = _mock_response({"ok": True})
+        imessage.send_text("+201099599616", "hello")
 
-    assert guid1 == "any;-;+201099599616"
-    assert guid2 == guid1
     post.assert_called_once()
     url = post.call_args.args[0] if post.call_args.args else post.call_args.kwargs["url"]
-    assert url == "https://imessage.example.com:443/v1/chats"
-    assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer tok-123"
-    assert post.call_args.kwargs["json"]["addresses"] == ["+201099599616"]
+    assert url == "http://sidecar:8789/send"
+    assert post.call_args.kwargs["json"] == {"to": "+201099599616", "text": "hello"}
 
 
-def test_send_text_posts_to_send_text_endpoint(photon_env):
+def test_send_text_raises_when_sidecar_reports_not_ok(sidecar_env):
     with patch("core.imessage.requests.post") as post:
-        post.side_effect = [
-            _mock_response({"chat": {"guid": "any;-;+201099599616"}}),
-            _mock_response({"message": {"guid": "msg-1"}}),
-        ]
-        guid = imessage.send_text("+201099599616", "hello")
-
-    assert guid == "msg-1"
-    send_call = post.call_args_list[1]
-    assert send_call.args[0].endswith("/v1/messages:sendText")
-    assert send_call.kwargs["json"] == {"chatGuid": "any;-;+201099599616", "text": "hello"}
+        post.return_value = _mock_response({"ok": False, "error": "boom"})
+        with pytest.raises(RuntimeError):
+            imessage.send_text("+201099599616", "hello")
 
 
-def test_send_to_recipients_counts_partial_failures(photon_env):
+def test_send_to_recipients_counts_partial_failures(sidecar_env):
     def fake_send(address, text):
         if address == "a@b.com":
             raise RuntimeError("boom")
-        return "ok"
 
     with patch("core.imessage.send_text", side_effect=fake_send):
         stats = imessage.send_to_recipients("hi")
@@ -83,34 +63,50 @@ def test_send_to_recipients_counts_partial_failures(photon_env):
     assert stats == {"sent": 1, "failed": 1}
 
 
-def test_configured_requires_all_values(photon_env):
+def test_configured_requires_url_and_recipients(sidecar_env):
     assert imessage.configured()
-    with patch("core.imessage.PHOTON_TOKEN", ""):
+    with patch("core.imessage.IMESSAGE_RECIPIENTS", []):
         assert not imessage.configured()
 
 
-# --- Queued delivery over iMessage -------------------------------------------
+# --- Synthetic user ids ------------------------------------------------------
 
-def _record(rec_id, job_id):
-    return {"id": rec_id, "job_id": job_id, "recipient_key": "backend"}
+def test_imessage_user_id_is_negative_and_stable():
+    id1 = imessage.imessage_user_telegram_id("+201099599616")
+    id2 = imessage.imessage_user_telegram_id("+201099599616")
+    id3 = imessage.imessage_user_telegram_id(" +201099599616 ")
+    other = imessage.imessage_user_telegram_id("a@b.com")
+
+    assert id1 == id2 == id3
+    assert id1 < 0
+    assert id1 != other
+    assert imessage.is_imessage_user(id1)
+    assert not imessage.is_imessage_user(123456789)
 
 
-def test_deliver_imessage_records_sends_each_job_once():
+# --- Queued personalized delivery over iMessage ------------------------------
+
+def _record(rec_id, job_id, recipient_key="-42"):
+    return {"id": rec_id, "job_id": job_id, "recipient_key": recipient_key}
+
+
+def test_deliver_imessage_records_sends_to_user_address():
     from bot import imessage_sender
 
     job = MagicMock()
     job.title = "Senior Python Dev"
-    records = [_record(1, 10), _record(2, 10), _record(3, 11)]
+    records = [_record(1, 10), _record(2, 11)]
 
     fake_job_cls = MagicMock()
     fake_job_cls.from_db_row.return_value = job
 
     async def run():
-        with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10})), \
+        with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10, "count": 0})), \
+             patch("bot.imessage_sender.adb._fetchall",
+                   new=AsyncMock(return_value=[{"telegram_id": -42, "username": "+201099599616"}])), \
              patch("bot.imessage_sender.Job", fake_job_cls), \
              patch("bot.imessage_sender.format_job_message", return_value="<b>Job</b>"), \
-             patch("bot.imessage_sender.imessage.send_to_recipients",
-                   return_value={"sent": 1, "failed": 0}) as send, \
+             patch("bot.imessage_sender.imessage.send_text") as send, \
              patch("bot.imessage_sender.imessage.html_to_plain", side_effect=lambda h: h), \
              patch("bot.imessage_sender.mark_delivery_sent") as mark_sent, \
              patch("bot.imessage_sender.mark_delivery_failed") as mark_failed:
@@ -119,29 +115,56 @@ def test_deliver_imessage_records_sends_each_job_once():
 
     stats, send, mark_sent, mark_failed = asyncio.run(run())
 
-    assert stats == {"sent": 3, "failed": 0, "skipped": 0}
-    # Two distinct jobs -> two iMessage sends, three records marked sent.
+    assert stats["sent"] == 2 and stats["failed"] == 0
     assert send.call_count == 2
-    assert mark_sent.call_count == 3
+    assert all(c.args[0] == "+201099599616" for c in send.call_args_list)
+    assert mark_sent.call_count == 2
     mark_failed.assert_not_called()
 
 
-def test_deliver_imessage_records_marks_failed_when_all_recipients_fail():
+def test_deliver_imessage_records_skips_telegram_users():
     from bot import imessage_sender
 
     job = MagicMock()
-    job.title = "Backend Dev"
+    records = [_record(1, 10, recipient_key="123456789")]
+
+    fake_job_cls = MagicMock()
+    fake_job_cls.from_db_row.return_value = job
+
+    async def run():
+        with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10, "count": 0})), \
+             patch("bot.imessage_sender.adb._fetchall",
+                   new=AsyncMock(return_value=[{"telegram_id": 123456789, "username": "tguser"}])), \
+             patch("bot.imessage_sender.Job", fake_job_cls), \
+             patch("bot.imessage_sender.imessage.send_text") as send, \
+             patch("bot.imessage_sender.mark_delivery_skipped") as mark_skipped:
+            stats = await imessage_sender.deliver_imessage_records(records)
+            return stats, send, mark_skipped
+
+    stats, send, mark_skipped = asyncio.run(run())
+
+    assert stats["skipped"] == 1
+    send.assert_not_called()
+    mark_skipped.assert_called_once()
+
+
+def test_deliver_imessage_records_marks_send_failure_retryable():
+    from bot import imessage_sender
+
+    job = MagicMock()
     records = [_record(1, 10)]
 
     fake_job_cls = MagicMock()
     fake_job_cls.from_db_row.return_value = job
 
     async def run():
-        with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10})), \
+        with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10, "count": 0})), \
+             patch("bot.imessage_sender.adb._fetchall",
+                   new=AsyncMock(return_value=[{"telegram_id": -42, "username": "+201099599616"}])), \
              patch("bot.imessage_sender.Job", fake_job_cls), \
              patch("bot.imessage_sender.format_job_message", return_value="<b>Job</b>"), \
-             patch("bot.imessage_sender.imessage.send_to_recipients",
-                   return_value={"sent": 0, "failed": 2}), \
+             patch("bot.imessage_sender.imessage.send_text",
+                   side_effect=RuntimeError("connection refused")), \
              patch("bot.imessage_sender.imessage.html_to_plain", side_effect=lambda h: h), \
              patch("bot.imessage_sender.mark_delivery_sent") as mark_sent, \
              patch("bot.imessage_sender.mark_delivery_failed") as mark_failed:
@@ -158,7 +181,7 @@ def test_deliver_imessage_records_marks_failed_when_all_recipients_fail():
 
 # --- Scheduler routing -------------------------------------------------------
 
-def test_scheduler_routes_group_records_to_imessage_and_skips_dms():
+def test_scheduler_routes_dm_records_to_imessage_and_skips_group_topics():
     from core import delivery_scheduler
 
     records = [_record(1, 10)]
@@ -167,15 +190,15 @@ def test_scheduler_routes_group_records_to_imessage_and_skips_dms():
         with patch("core.config.DELIVERY_CHANNEL", "imessage"), \
              patch("core.delivery_scheduler.recover_stale_deliveries",
                    return_value={"recovered": 0, "dead_lettered": 0}), \
-             patch("core.delivery_scheduler._claim", return_value=records) as claim, \
+             patch("core.delivery_scheduler._claim") as claim, \
              patch("bot.imessage_sender.deliver_imessage_records",
-                   new=AsyncMock(return_value={"sent": 1, "failed": 0, "skipped": 0})) as im_deliver, \
+                   new=AsyncMock(return_value={"sent": 1, "failed": 0, "deferred": 0})) as im_deliver, \
              patch("core.delivery_scheduler.deliver_group_topic_records",
                    new=AsyncMock()) as tg_deliver, \
              patch("core.delivery_scheduler.deliver_subscriber_dm_records",
                    new=AsyncMock()) as dm_deliver:
-            # One pass: after the iMessage batch, next claim returns nothing.
-            claim.side_effect = [records, []]
+            # First pass: one DM record, no group records; second pass: nothing.
+            claim.side_effect = [[], records, [], []]
             stats = await delivery_scheduler.run_delivery_cycle(None, max_cycle_seconds=30)
             return stats, im_deliver, tg_deliver, dm_deliver, claim
 
@@ -184,24 +207,23 @@ def test_scheduler_routes_group_records_to_imessage_and_skips_dms():
     im_deliver.assert_awaited_once()
     tg_deliver.assert_not_awaited()
     dm_deliver.assert_not_awaited()
-    # Only the group-topic claim ran; subscriber DMs are never claimed.
-    assert all(c.args[1] == "group_topic" for c in claim.call_args_list)
-    assert stats["group_topic_sent"] == 1
+    assert stats["dm_sent"] == 1
+    assert stats["group_topic_sent"] == 0
 
 
 # --- Enqueue gating ----------------------------------------------------------
 
-def test_enqueue_skips_subscriber_dms_in_imessage_mode():
+def test_enqueue_skips_group_topics_in_imessage_mode():
     from core import delivery_queue
 
     with patch("core.config.DELIVERY_CHANNEL", "imessage"), \
-         patch("core.delivery_queue.build_group_topic_deliveries", return_value=[]) as group, \
-         patch("core.delivery_queue.build_subscriber_dm_deliveries") as dm_builder, \
+         patch("core.delivery_queue.build_group_topic_deliveries") as group_builder, \
+         patch("core.delivery_queue.build_subscriber_dm_deliveries", return_value=[]) as dm_builder, \
          patch("core.delivery_queue._insert_delivery_rows", return_value=0):
         result = delivery_queue.enqueue_job_deliveries([("job", 1)])
 
-    group.assert_called_once()
-    dm_builder.assert_not_called()
+    group_builder.assert_not_called()
+    dm_builder.assert_called_once()
     assert result == {"group_topic_queued": 0, "subscriber_dm_queued": 0}
 
 

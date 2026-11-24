@@ -21,8 +21,10 @@ def create_app(lifespan=None) -> FastAPI:
     # Register routes
     from api.routes_jobs import router as jobs_router
     from api.routes_stats import router as stats_router
+    from api.routes_imessage import router as imessage_router
     app.include_router(jobs_router, prefix="/api/jobs")
     app.include_router(stats_router, prefix="/api/stats")
+    app.include_router(imessage_router)
 
     @app.get("/health")
     async def health():

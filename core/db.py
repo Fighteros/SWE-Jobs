@@ -552,6 +552,17 @@ def get_or_create_user(telegram_id: int, username: str = "") -> dict:
     return new_row
 
 
+def get_or_create_imessage_user(address: str) -> dict:
+    """
+    Return the users row for an iMessage address, creating it first if absent.
+
+    The address itself is stored in username; telegram_id is the stable
+    synthetic negative id from core.imessage.imessage_user_telegram_id.
+    """
+    from core.imessage import imessage_user_telegram_id
+    return get_or_create_user(imessage_user_telegram_id(address), address.strip().lower())
+
+
 # =============================================================================
 # User Alerts (multi-alert subscriptions)
 # =============================================================================

@@ -89,7 +89,7 @@ async def _delivery_loop():
 
     if use_imessage and not _imessage.configured():
         log.warning(
-            "DELIVERY_CHANNEL=imessage but PHOTON_SERVER_ADDRESS/PHOTON_TOKEN/"
+            "DELIVERY_CHANNEL=imessage but IMESSAGE_SIDECAR_URL/"
             "IMESSAGE_RECIPIENTS are not set — delivery scheduler will sleep forever"
         )
         while True:

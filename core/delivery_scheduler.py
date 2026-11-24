@@ -74,30 +74,32 @@ async def run_delivery_cycle(
         visited_ids.update(r["id"] for r in group_records)
         if group_records:
             if use_imessage:
-                from bot.imessage_sender import deliver_imessage_records
-                group_stats = await deliver_imessage_records(group_records)
+                # The iMessage mode never enqueues group-topic records
+                # (see delivery_queue); skip defensively if any exist.
+                group_stats = {"sent": 0, "failed": 0, "skipped": len(group_records)}
             else:
                 group_stats = await deliver_group_topic_records(bot, group_records)
             stats["group_topic_sent"] += group_stats.get("sent", 0)
             stats["group_topic_failed"] += group_stats.get("failed", 0)
             stats["group_topic_skipped"] += group_stats.get("skipped", 0)
 
-        # Subscriber DMs are Telegram-user deliveries; iMessage mode has no
-        # Telegram subscribers and never enqueues them (see delivery_queue).
-        if use_imessage:
-            if not group_records:
-                break
-            continue
-
         dm_records = await asyncio.to_thread(
             _claim, batch_size, DELIVERY_TYPE_SUBSCRIBER_DM, list(visited_ids)
         )
         visited_ids.update(r["id"] for r in dm_records)
         if dm_records:
-            dm_stats = await deliver_subscriber_dm_records(bot, dm_records)
-            stats["dm_sent"] += dm_stats.get("sent", 0)
-            stats["dm_failed"] += dm_stats.get("failed", 0)
-            stats["dm_deferred"] += dm_stats.get("deferred", 0)
+            if use_imessage:
+                # Personalized deliveries: each iMessage subscriber's own
+                # matched jobs, sent via the Photon Spectrum sidecar.
+                from bot.imessage_sender import deliver_imessage_records
+                dm_stats = await deliver_imessage_records(dm_records)
+                stats["dm_sent"] += dm_stats.get("sent", 0)
+                stats["dm_failed"] += dm_stats.get("failed", 0)
+            else:
+                dm_stats = await deliver_subscriber_dm_records(bot, dm_records)
+                stats["dm_sent"] += dm_stats.get("sent", 0)
+                stats["dm_failed"] += dm_stats.get("failed", 0)
+                stats["dm_deferred"] += dm_stats.get("deferred", 0)
 
         if not group_records and not dm_records:
             break
