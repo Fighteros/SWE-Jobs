@@ -200,7 +200,13 @@ def enqueue_job_deliveries(
     Returns counts of group_topic and subscriber_dm rows created.
     """
     group_rows = build_group_topic_deliveries(jobs_with_ids, is_seed=is_seed)
-    dm_rows = build_subscriber_dm_deliveries(jobs_with_ids, is_seed=is_seed)
+    # Subscriber DMs target Telegram user ids. In iMessage mode there are no
+    # Telegram subscribers: every job goes to IMESSAGE_RECIPIENTS instead.
+    from core import config as _config
+    if _config.DELIVERY_CHANNEL == "imessage":
+        dm_rows = []
+    else:
+        dm_rows = build_subscriber_dm_deliveries(jobs_with_ids, is_seed=is_seed)
 
     group_inserted = _insert_delivery_rows(group_rows)
     dm_inserted = _insert_delivery_rows(dm_rows)

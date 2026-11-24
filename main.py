@@ -124,13 +124,18 @@ async def main():
     )
 
     # ── 9. Check alerts ─────────────────────────────────────
-    if TELEGRAM_BOT_TOKEN:
+    from core.config import DELIVERY_CHANNEL
+    if TELEGRAM_BOT_TOKEN or DELIVERY_CHANNEL == "imessage":
         try:
             from telegram import Bot
             from core.monitoring import check_alerts
-            bot = Bot(token=TELEGRAM_BOT_TOKEN)
-            async with bot:
-                await check_alerts(bot, run_id)
+            if DELIVERY_CHANNEL == "imessage":
+                # Alerts go to iMessage recipients; no Telegram Bot needed.
+                await check_alerts(None, run_id)
+            else:
+                bot = Bot(token=TELEGRAM_BOT_TOKEN)
+                async with bot:
+                    await check_alerts(bot, run_id)
         except Exception as e:
             log.warning(f"Alert check failed: {e}")
 

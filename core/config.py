@@ -71,6 +71,21 @@ MUSE_API_KEY: str = os.getenv("MUSE_API_KEY", "")
 
 ADMIN_TELEGRAM_ID: str = os.getenv("ADMIN_TELEGRAM_ID", "")
 
+# =============================================================================
+# iMessage delivery (Photon) — used when DELIVERY_CHANNEL=imessage
+# =============================================================================
+# Which channel job deliveries and admin alerts go out on. "telegram" is the
+# original bot; "imessage" sends everything to IMESSAGE_RECIPIENTS through a
+# Photon Advanced iMessage server instead.
+DELIVERY_CHANNEL: str = os.getenv("DELIVERY_CHANNEL", "telegram").strip().lower()
+PHOTON_SERVER_ADDRESS: str = os.getenv("PHOTON_SERVER_ADDRESS", "")  # host[:port] or full URL
+PHOTON_TOKEN: str = os.getenv("PHOTON_TOKEN", "")                   # bearer token for the Photon server
+PHOTON_REQUEST_TIMEOUT: int = int(os.getenv("PHOTON_REQUEST_TIMEOUT", "15"))  # seconds
+# Comma-separated iMessage recipients: E.164 phone numbers and/or emails.
+IMESSAGE_RECIPIENTS: list[str] = [
+    addr.strip() for addr in os.getenv("IMESSAGE_RECIPIENTS", "").split(",") if addr.strip()
+]
+
 # Crash / health alerting. These make silent failures visible in Telegram.
 # Message the admin whenever the backend (re)starts, so a crash-restart loop
 # shows up instead of failing silently.

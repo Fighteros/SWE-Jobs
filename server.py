@@ -15,6 +15,7 @@ from core.logging_config import setup_logging
 from api.app import create_app
 from core.config import (
     ALERT_CONSECUTIVE_FAILURES,
+    DELIVERY_CHANNEL,
     FETCH_INTERVAL_MINUTES,
     DELIVERY_INTERVAL_SECONDS,
     DELIVERY_IDLE_SLEEP_SECONDS,
@@ -81,16 +82,30 @@ async def _delivery_loop():
         f"Delivery scheduler started — running every {DELIVERY_INTERVAL_SECONDS}s"
     )
 
-    if not TELEGRAM_BOT_TOKEN:
+    from core import imessage as _imessage
+
+    use_imessage = DELIVERY_CHANNEL == "imessage"
+    channel_label = "iMessage" if use_imessage else "Telegram"
+
+    if use_imessage and not _imessage.configured():
+        log.warning(
+            "DELIVERY_CHANNEL=imessage but PHOTON_SERVER_ADDRESS/PHOTON_TOKEN/"
+            "IMESSAGE_RECIPIENTS are not set — delivery scheduler will sleep forever"
+        )
+        while True:
+            await asyncio.sleep(DELIVERY_INTERVAL_SECONDS)
+    if not use_imessage and not TELEGRAM_BOT_TOKEN:
         log.warning("No TELEGRAM_BOT_TOKEN — delivery scheduler will sleep forever")
         while True:
             await asyncio.sleep(DELIVERY_INTERVAL_SECONDS)
 
     from core.monitoring import notify_admin
 
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    # iMessage mode needs no Telegram Bot; Telegram mode cannot run without one.
+    from contextlib import nullcontext
+    bot_ctx = nullcontext(None) if use_imessage else Bot(token=TELEGRAM_BOT_TOKEN)
     failures = 0
-    async with bot:
+    async with bot_ctx as bot:
         while True:
             if _delivery_lock.locked():
                 log.warning("Delivery scheduler: previous cycle still running, skipping this tick")
@@ -105,7 +120,7 @@ async def _delivery_loop():
                     stats = await run_delivery_cycle(bot)
                     if failures >= ALERT_CONSECUTIVE_FAILURES:
                         await notify_admin(
-                            f"✅ <b>Telegram delivery recovered</b> after {failures} consecutive failed cycles.",
+                            f"✅ <b>{channel_label} delivery recovered</b> after {failures} consecutive failed cycles.",
                             bot,
                         )
                     failures = 0
@@ -114,9 +129,9 @@ async def _delivery_loop():
                     log.exception("Delivery scheduler: cycle failed (will retry next interval)")
                     if failures == ALERT_CONSECUTIVE_FAILURES:
                         await notify_admin(
-                            "🚨 <b>Telegram delivery failing</b>\n"
+                            f"🚨 <b>{channel_label} delivery failing</b>\n"
                             f"{failures} consecutive delivery cycles failed — queued jobs are "
-                            "NOT reaching Telegram. See server logs.",
+                            f"NOT reaching {channel_label}. See server logs.",
                             bot,
                         )
 
@@ -151,10 +166,14 @@ async def lifespan(app):
     """
     global _supervisor, _supervisor_task, _scheduler_task, _delivery_task
 
-    _supervisor = PollingSupervisor()
-    _supervisor_task = asyncio.create_task(
-        _supervisor.run(), name="telegram-polling-supervisor"
-    )
+    if TELEGRAM_BOT_TOKEN:
+        _supervisor = PollingSupervisor()
+        _supervisor_task = asyncio.create_task(
+            _supervisor.run(), name="telegram-polling-supervisor"
+        )
+    else:
+        # iMessage-only deployments run without the Telegram bot entirely.
+        log.info("No TELEGRAM_BOT_TOKEN — Telegram bot polling disabled")
 
     _scheduler_task = asyncio.create_task(_job_fetch_loop(), name="job-fetch-scheduler")
     _delivery_task = asyncio.create_task(_delivery_loop(), name="job-delivery-scheduler")

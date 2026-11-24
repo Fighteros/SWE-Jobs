@@ -3,6 +3,7 @@ Run monitoring, alert triggers, and daily digest.
 Sends alerts to a separate admin Telegram topic or DM.
 """
 
+import asyncio
 import logging
 from typing import Optional
 from telegram import Bot
@@ -11,9 +12,11 @@ from telegram.error import TelegramError
 from core.config import (
     ADMIN_TELEGRAM_ID,
     ALERT_CIRCUIT_COOLDOWN_HOURS,
+    DELIVERY_CHANNEL,
     TELEGRAM_BOT_TOKEN,
 )
 from core import db_async as adb
+from core import imessage as _imessage
 
 log = logging.getLogger(__name__)
 
@@ -22,8 +25,19 @@ def _escape_html(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-async def send_admin_alert(bot: Bot, message: str) -> bool:
-    """Send an alert message to the admin via DM."""
+def _send_admin_alert_imessage(message: str) -> bool:
+    """iMessage mode: alerts go to the configured iMessage recipients."""
+    if not _imessage.configured():
+        log.debug("iMessage delivery not configured, skipping alert")
+        return False
+    stats = _imessage.send_to_recipients(_imessage.html_to_plain(message))
+    return stats["sent"] > 0
+
+
+async def send_admin_alert(bot: Optional[Bot], message: str) -> bool:
+    """Send an alert message to the admin via the configured delivery channel."""
+    if DELIVERY_CHANNEL == "imessage":
+        return await asyncio.to_thread(_send_admin_alert_imessage, message)
     if not ADMIN_TELEGRAM_ID:
         log.debug("No ADMIN_TELEGRAM_ID set, skipping alert")
         return False
@@ -275,6 +289,12 @@ def send_admin_alert_sync(message: str, timeout: float = 5.0) -> bool:
     Synchronous, best-effort admin alert for contexts where the event loop is
     unavailable or about to die (fatal exits, crash paths). Never raises.
     """
+    if DELIVERY_CHANNEL == "imessage":
+        try:
+            return _send_admin_alert_imessage(message)
+        except Exception as e:
+            log.error("Sync admin alert failed: %s", e)
+            return False
     if not ADMIN_TELEGRAM_ID or not TELEGRAM_BOT_TOKEN:
         log.debug("No ADMIN_TELEGRAM_ID/TELEGRAM_BOT_TOKEN set, skipping sync alert")
         return False
@@ -305,6 +325,12 @@ async def notify_admin(message: str, bot: Optional[Bot] = None) -> bool:
     Async admin alert that works with or without an existing Bot instance.
     Creates a short-lived Bot when none is passed. Never raises.
     """
+    if DELIVERY_CHANNEL == "imessage":
+        try:
+            return await asyncio.to_thread(_send_admin_alert_imessage, message)
+        except Exception as e:
+            log.error("Failed to send admin alert: %s", e)
+            return False
     if bot is not None:
         return await send_admin_alert(bot, message)
     if not TELEGRAM_BOT_TOKEN:

@@ -90,6 +90,11 @@ Sources that don't require keys: Remotive, Himalayas, Jobicy, RemoteOK, Arbeitno
 | `STARTUP_ALERT` | Message the admin on every backend (re)start | `true` |
 | `ALERT_CONSECUTIVE_FAILURES` | Alert after this many consecutive fetch / delivery / supervisor failures | `3` |
 | `ALERT_CIRCUIT_COOLDOWN_HOURS` | Minimum hours between "circuit breaker open" alerts for the same source while it stays broken; the first open and the recovery always alert | `6` |
+| `DELIVERY_CHANNEL` | `telegram` (default) or `imessage`. `imessage` sends job deliveries and admin alerts to `IMESSAGE_RECIPIENTS` via Photon instead of Telegram; the Telegram bot and subscriber DMs are disabled in that mode | `telegram` |
+| `PHOTON_SERVER_ADDRESS` | Photon Advanced iMessage server address (`host[:port]` or full URL) | — |
+| `PHOTON_TOKEN` | Bearer token for the Photon server | — |
+| `IMESSAGE_RECIPIENTS` | Comma-separated iMessage recipients (E.164 phone numbers and/or emails) | — |
+| `PHOTON_REQUEST_TIMEOUT` | Seconds per Photon API request | `15` |
 
 Seed mode is useful for the first run — it populates the database without flooding the Telegram group with existing jobs.
 

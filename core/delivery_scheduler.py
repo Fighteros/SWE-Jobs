@@ -45,6 +45,8 @@ async def run_delivery_cycle(
     def _budget_remaining() -> float:
         return max_cycle_seconds - (time.monotonic() - start)
 
+    use_imessage = config.DELIVERY_CHANNEL == "imessage"
+
     stats = {
         "stale_recovered": 0,
         "stale_dead_lettered": 0,
@@ -71,10 +73,21 @@ async def run_delivery_cycle(
         )
         visited_ids.update(r["id"] for r in group_records)
         if group_records:
-            group_stats = await deliver_group_topic_records(bot, group_records)
+            if use_imessage:
+                from bot.imessage_sender import deliver_imessage_records
+                group_stats = await deliver_imessage_records(group_records)
+            else:
+                group_stats = await deliver_group_topic_records(bot, group_records)
             stats["group_topic_sent"] += group_stats.get("sent", 0)
             stats["group_topic_failed"] += group_stats.get("failed", 0)
             stats["group_topic_skipped"] += group_stats.get("skipped", 0)
+
+        # Subscriber DMs are Telegram-user deliveries; iMessage mode has no
+        # Telegram subscribers and never enqueues them (see delivery_queue).
+        if use_imessage:
+            if not group_records:
+                break
+            continue
 
         dm_records = await asyncio.to_thread(
             _claim, batch_size, DELIVERY_TYPE_SUBSCRIBER_DM, list(visited_ids)
