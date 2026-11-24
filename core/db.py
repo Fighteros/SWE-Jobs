@@ -491,6 +491,40 @@ def is_source_circuit_open(source: str) -> bool:
     return bool(row.get("is_open", False))
 
 
+# --- Circuit-breaker alert state -------------------------------------------
+# The circuit_open_alerted_at column (migration 009) records when the admin
+# was last alerted about an open circuit, so monitoring can alert once per
+# outage instead of after every run. Migrations only run when Postgres
+# initialises an empty volume, so the column is ensured lazily here for
+# databases that already exist.
+_circuit_alert_schema: Optional[bool] = None
+
+
+def ensure_circuit_alert_schema() -> bool:
+    """
+    Make sure source_health has the circuit_open_alerted_at column.
+
+    Returns True when the column is usable. On any failure (e.g. insufficient
+    privileges) returns False, and callers must fall back to alerting without
+    persisted alert state. The result is cached for the process lifetime.
+    """
+    global _circuit_alert_schema
+    if _circuit_alert_schema is not None:
+        return _circuit_alert_schema
+    try:
+        _execute(
+            "ALTER TABLE source_health "
+            "ADD COLUMN IF NOT EXISTS circuit_open_alerted_at TIMESTAMPTZ"
+        )
+        _circuit_alert_schema = True
+    except Exception as e:
+        logger.warning(
+            f"circuit alert schema unavailable, falling back to per-transition alerts: {e}"
+        )
+        _circuit_alert_schema = False
+    return _circuit_alert_schema
+
+
 # =============================================================================
 # Users
 # =============================================================================

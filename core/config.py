@@ -78,6 +78,9 @@ STARTUP_ALERT: bool = os.getenv("STARTUP_ALERT", "true").lower() in ("1", "true"
 # Alert after this many consecutive failures of the fetch pipeline, the
 # delivery scheduler, or the polling supervisor's own liveness checks.
 ALERT_CONSECUTIVE_FAILURES: int = int(os.getenv("ALERT_CONSECUTIVE_FAILURES", "3"))
+# Minimum hours between "circuit breaker open" alerts for the same source
+# while it stays broken. The first open and the recovery always alert.
+ALERT_CIRCUIT_COOLDOWN_HOURS: int = int(os.getenv("ALERT_CIRCUIT_COOLDOWN_HOURS", "6"))
 
 # =============================================================================
 # Misc
