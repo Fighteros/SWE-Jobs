@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { Spectrum } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers";
+import { imessage } from "spectrum-ts/providers/imessage";
 
 const PORT = Number(process.env.PORT || 8789);
 const INBOUND_FORWARD_URL = process.env.INBOUND_FORWARD_URL || "";
@@ -25,15 +25,15 @@ if (!PROJECT_ID || !PROJECT_SECRET) {
   process.exit(1);
 }
 
-const app = new Spectrum({
+const app = await Spectrum({
   projectId: PROJECT_ID,
   projectSecret: PROJECT_SECRET,
   providers: [imessage.config()],
 });
-const im = app.providers.imessage;
+const im = imessage(app);
 
 async function sendIMessage(to, text) {
-  const user = im.user(to);
+  const user = await im.user(to);
   const space = await im.space.create(user);
   await space.send(text);
 }
@@ -54,6 +54,7 @@ async function forwardInbound(body) {
 async function watchInbound() {
   for await (const [space, message] of app.messages) {
     try {
+      if (message.direction === "outbound") continue;
       if (message?.content?.type !== "text") continue;
       const from = message.sender?.id;
       const text = message.content.text;

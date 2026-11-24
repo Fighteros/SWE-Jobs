@@ -9,6 +9,6 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "spectrum-ts": "^0.1.0"
+    "spectrum-ts": "^12.16.0"
   }
 }
