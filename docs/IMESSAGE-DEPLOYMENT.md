@@ -108,3 +108,15 @@ bash scripts/deploy_imessage.sh "$PWD"
   want the API reachable from outside the compose network).
 - Live iMessage delivery requires the Spectrum credentials above; without
   them the sidecar exits on startup and the backend delivers nothing.
+
+### Inbound recovery and pending notifications
+
+The sidecar persists accepted commands in the `imessage_inbound` Compose volume
+before forwarding. Unacknowledged commands are retried after outages and restarts;
+HTTP 400 entries are retained with a `.rejected` suffix for operator inspection.
+Protect this volume as it contains message data, and do not delete it during upgrades.
+A reply can be duplicated if Photon accepted it but the backend could not record
+that success; command mutations are deduplicated separately.
+
+Queued jobs are checked against current alert and blacklist settings before sending.
+An alert change does not recall an iMessage already in flight.

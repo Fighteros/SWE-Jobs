@@ -16,15 +16,17 @@ import asyncio
 import logging
 
 from core import db_async as adb
-from core import imessage
+from core import db, imessage
 from core.delivery_queue import (
     DELIVERY_TYPE_SUBSCRIBER_DM,
+    _matching_alert,
     mark_delivery_failed,
     mark_delivery_sent,
     mark_delivery_skipped,
     release_delivery_to_pending,
 )
 from core.models import Job
+from core.subscription_matching import job_blocked_by_blacklist
 from bot.sender import format_job_message
 from core.config import (
     DM_MAX_PER_USER_PER_WINDOW,
@@ -40,6 +42,15 @@ def _is_retryable_error(error: str) -> bool:
         "timed out", "timeout", "connection", "too many requests",
         "bad gateway", "gateway timeout", "unavailable", "500", "502", "503",
     ))
+
+
+def _still_subscribed(user_id: int, job: Job) -> bool:
+    user = db._fetchone("SELECT notify_dm FROM users WHERE id = %s", (user_id,))
+    return bool(
+        user and user["notify_dm"]
+        and _matching_alert(job, db.get_user_alerts(user_id))
+        and not job_blocked_by_blacklist(job, db.get_blacklist(user_id))
+    )
 
 
 async def deliver_imessage_records(records: list[dict]) -> dict:
@@ -126,10 +137,6 @@ async def deliver_imessage_records(records: list[dict]) -> dict:
         job_id = record["job_id"]
         recipient_key = record["recipient_key"]
 
-        if recipient_key in retry_times:
-            await _defer(delivery_id, recipient_key)
-            continue
-
         job = jobs_by_id.get(job_id)
         user = users_by_key.get(recipient_key)
 
@@ -156,6 +163,11 @@ async def deliver_imessage_records(records: list[dict]) -> dict:
                 mark_delivery_failed, delivery_id, "user has no iMessage address", False
             )
             stats["failed"] += 1
+            continue
+
+        if not await asyncio.to_thread(_still_subscribed, user["id"], job):
+            await asyncio.to_thread(mark_delivery_skipped, delivery_id, "subscription_no_longer_matches")
+            stats["skipped"] += 1
             continue
 
         if recipient_key not in user_sent_counts:

@@ -84,6 +84,8 @@ services:
       IMESSAGE_WEBHOOK_SECRET: ${IMESSAGE_WEBHOOK_SECRET:-}
       INBOUND_FORWARD_URL: http://backend:8000/imessage/inbound
       PORT: "8789"
+    volumes:
+      - imessage_inbound:/var/lib/swejobs/inbound
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8789/health', {signal: AbortSignal.timeout(3000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
@@ -96,3 +98,4 @@ services:
 
 volumes:
   pgdata:
+  imessage_inbound:

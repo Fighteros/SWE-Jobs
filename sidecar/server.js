@@ -12,6 +12,7 @@
 //   { "from": "<sender>", "text": "...", "space_id": "...", "message_id": "..." }
 
 import http from "node:http";
+import { inboundSpool } from "./inbound-spool.js";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 
@@ -44,33 +45,25 @@ async function sendIMessage(to, text) {
   await space.send(text);
 }
 
-async function forwardInbound(body) {
-  if (!INBOUND_FORWARD_URL) return;
-  // Every retry carries the same Photon message ID. The backend commits
-  // mutations once and can retry a failed reply without executing them again.
-  const delays = [0, 500, 1500, 4000];
-  for (const delay of delays) {
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    try {
-      const response = await fetch(INBOUND_FORWARD_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${WEBHOOK_SECRET}`,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(30000),
-      });
-      if (response.ok && (await response.json()).handled === true) return;
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-        console.error("inbound event rejected:", response.status);
-        return;
-      }
-    } catch (err) {
-      console.error("inbound forward attempt failed:", err);
-    }
+const spool = inboundSpool(process.env.INBOUND_SPOOL_DIR || "/var/lib/swejobs/inbound", async (event) => {
+  try {
+    const response = await fetch(INBOUND_FORWARD_URL, {
+      method: "POST",
+      headers: {"content-type": "application/json", authorization: `Bearer ${WEBHOOK_SECRET}`},
+      body: JSON.stringify(event),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (response.ok && (await response.json()).handled === true) return "ack";
+    console.error("inbound event not acknowledged:", response.status);
+    return response.status === 400 ? "reject" : "retry";
+  } catch (err) {
+    console.error("inbound forward attempt failed:", err);
+    return "retry";
   }
-  console.error("inbound forwarding retries exhausted");
+});
+
+function drainInbound() {
+  spool.drain().catch(err => console.error("inbound spool drain failed:", err));
 }
 
 async function watchInbound() {
@@ -80,15 +73,15 @@ async function watchInbound() {
       if (message?.content?.type !== "text") continue;
       const from = message.sender?.id;
       const text = message.content.text;
-      if (!from || !text || !message.id) continue;
-      await forwardInbound({
+      if (!INBOUND_FORWARD_URL || !from || !text || !message.id) continue;
+      await spool.enqueue({
         from,
         text,
         space_id: space?.id ?? null,
         message_id: message.id ?? null,
       });
     } catch (err) {
-      console.error("inbound handling failed:", err);
+      throw err;
     }
   }
 }
@@ -138,6 +131,10 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`imessage sidecar listening on :${PORT}`);
+  if (INBOUND_FORWARD_URL) {
+    drainInbound();
+    setInterval(drainInbound, 5000).unref();
+  }
   watchInbound().catch((err) => {
     console.error("inbound watcher exited:", err);
     process.exit(1);

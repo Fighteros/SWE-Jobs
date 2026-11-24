@@ -103,8 +103,9 @@ def test_deliver_imessage_records_sends_to_user_address():
     async def run():
         with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10, "count": 0})), \
              patch("bot.imessage_sender.adb._fetchall",
-                   new=AsyncMock(return_value=[{"telegram_id": -42, "username": "+201099599616"}])), \
+                   new=AsyncMock(return_value=[{"id": 1, "telegram_id": -42, "username": "+201099599616"}])), \
              patch("bot.imessage_sender.Job", fake_job_cls), \
+             patch("bot.imessage_sender._still_subscribed", return_value=True), \
              patch("bot.imessage_sender.format_job_message", return_value="<b>Job</b>"), \
              patch("bot.imessage_sender.imessage.send_text") as send, \
              patch("bot.imessage_sender.imessage.html_to_plain", side_effect=lambda h: h), \
@@ -122,6 +123,26 @@ def test_deliver_imessage_records_sends_to_user_address():
     mark_failed.assert_not_called()
 
 
+def test_queued_imessage_is_skipped_when_alert_no_longer_matches():
+    from bot import imessage_sender as sender
+
+    async def run():
+        with patch.object(sender.adb, "_fetchone", new=AsyncMock(return_value={"id": 10})), \
+             patch.object(sender.adb, "_fetchall", new=AsyncMock(return_value=[
+                 {"id": 1, "telegram_id": -42, "username": "recipient"}]
+             )), patch.object(sender, "Job"), \
+             patch.object(sender.db, "_fetchone", return_value={"notify_dm": True}), \
+             patch.object(sender.db, "get_user_alerts", return_value=[{"dm_enabled": False}]), \
+             patch.object(sender, "mark_delivery_skipped") as skipped, \
+             patch.object(sender.imessage, "send_text") as send:
+            result = await sender.deliver_imessage_records([_record(1, 10)])
+            assert result["skipped"] == 1
+            skipped.assert_called_once_with(1, "subscription_no_longer_matches")
+            send.assert_not_called()
+
+    asyncio.run(run())
+
+
 def test_deliver_imessage_records_skips_telegram_users():
     from bot import imessage_sender
 
@@ -136,6 +157,7 @@ def test_deliver_imessage_records_skips_telegram_users():
              patch("bot.imessage_sender.adb._fetchall",
                    new=AsyncMock(return_value=[{"telegram_id": 123456789, "username": "tguser"}])), \
              patch("bot.imessage_sender.Job", fake_job_cls), \
+             patch("bot.imessage_sender._still_subscribed", return_value=True), \
              patch("bot.imessage_sender.imessage.send_text") as send, \
              patch("bot.imessage_sender.mark_delivery_skipped") as mark_skipped:
             stats = await imessage_sender.deliver_imessage_records(records)
@@ -160,8 +182,9 @@ def test_deliver_imessage_records_marks_send_failure_retryable():
     async def run():
         with patch("bot.imessage_sender.adb._fetchone", new=AsyncMock(return_value={"id": 10, "count": 0})), \
              patch("bot.imessage_sender.adb._fetchall",
-                   new=AsyncMock(return_value=[{"telegram_id": -42, "username": "+201099599616"}])), \
+                   new=AsyncMock(return_value=[{"id": 1, "telegram_id": -42, "username": "+201099599616"}])), \
              patch("bot.imessage_sender.Job", fake_job_cls), \
+             patch("bot.imessage_sender._still_subscribed", return_value=True), \
              patch("bot.imessage_sender.format_job_message", return_value="<b>Job</b>"), \
              patch("bot.imessage_sender.imessage.send_text",
                    side_effect=RuntimeError("connection refused")), \
