@@ -133,11 +133,15 @@ def _describe_alert(a: dict) -> str:
 
 
 async def handle_inbound(address: str, text: str) -> str:
+    return await asyncio.to_thread(handle_inbound_sync, address, text)
+
+
+def handle_inbound_sync(address: str, text: str) -> str:
     """
     Handle one inbound iMessage from `address` and return the reply text.
     Auto-registers the sender as an iMessage user on first contact.
     """
-    user = await asyncio.to_thread(db.get_or_create_imessage_user, address)
+    user = db.get_or_create_imessage_user(address)
     text = (text or "").strip()
     parts = text.split()
     cmd = parts[0].lower() if parts else ""
@@ -147,7 +151,7 @@ async def handle_inbound(address: str, text: str) -> str:
         return HELP_TEXT
 
     if cmd == "/alerts":
-        alerts = await asyncio.to_thread(db.get_user_alerts, user["id"])
+        alerts = db.get_user_alerts(user["id"])
         if not alerts:
             return "You have no alerts yet. Create one with:\n/alert add seniority=mid locations=remote"
         cards = "\n\n".join(_describe_alert(a) for a in alerts)
@@ -170,8 +174,8 @@ async def handle_inbound(address: str, text: str) -> str:
         alert, error = _parse_add_args(sub_args)
         if error:
             return f"⚠️ {error}"
-        await asyncio.to_thread(db.create_user_alert, user["id"], alert)
-        alerts = await asyncio.to_thread(db.get_user_alerts, user["id"])
+        db.create_user_alert(user["id"], alert)
+        alerts = db.get_user_alerts(user["id"])
         position = alerts[-1]["position"] if alerts else 1
         return (
             f"✅ Alert #{position} saved:\n\n{_describe_alert(alerts[-1])}\n\n"
@@ -182,13 +186,13 @@ async def handle_inbound(address: str, text: str) -> str:
         if not sub_args:
             return "Usage: /alert remove N  (or: /alert remove all)"
         if sub_args[0].lower() == "all":
-            count = await asyncio.to_thread(db.delete_all_user_alerts, user["id"])
+            count = db.delete_all_user_alerts(user["id"])
             return f"🗑 Removed all {count} alert(s). You will no longer receive job matches."
         try:
             position = int(sub_args[0])
         except ValueError:
             return f"⚠️ '{sub_args[0]}' is not an alert number. Send /alerts to see your alerts."
-        ok = await asyncio.to_thread(db.delete_user_alert, user["id"], position)
+        ok = db.delete_user_alert(user["id"], position)
         if ok:
             return f"🗑 Alert #{position} removed."
         return f"⚠️ No alert #{position}. Send /alerts to see your alerts."
@@ -201,7 +205,7 @@ async def handle_inbound(address: str, text: str) -> str:
         except ValueError:
             return f"⚠️ '{sub_args[0]}' is not an alert number. Send /alerts to see your alerts."
         enabled = sub == "resume"
-        ok = await asyncio.to_thread(db.set_alert_dm_enabled, user["id"], position, enabled)
+        ok = db.set_alert_dm_enabled(user["id"], position, enabled)
         if ok:
             return f"{'▶️' if enabled else '⏸'} Alert #{position} {'resumed' if enabled else 'paused'}."
         return f"⚠️ No alert #{position}. Send /alerts to see your alerts."

@@ -82,6 +82,7 @@ ADMIN_TELEGRAM_ID: str = os.getenv("ADMIN_TELEGRAM_ID", "")
 DELIVERY_CHANNEL: str = os.getenv("DELIVERY_CHANNEL", "telegram").strip().lower()
 # Loopback URL of the imessage sidecar (docker-compose service "imessage-sidecar").
 IMESSAGE_SIDECAR_URL: str = os.getenv("IMESSAGE_SIDECAR_URL", "http://localhost:8789")
+IMESSAGE_WEBHOOK_SECRET: str = os.getenv("IMESSAGE_WEBHOOK_SECRET", "")
 IMESSAGE_REQUEST_TIMEOUT: int = int(os.getenv("IMESSAGE_REQUEST_TIMEOUT", "15"))  # seconds
 # Sidecar credentials: Spectrum project id + secret from app.photon.codes
 # (consumed by the sidecar, not the Python app; listed here for .env parity).

@@ -17,11 +17,17 @@ import { imessage } from "spectrum-ts/providers/imessage";
 
 const PORT = Number(process.env.PORT || 8789);
 const INBOUND_FORWARD_URL = process.env.INBOUND_FORWARD_URL || "";
+const WEBHOOK_SECRET = process.env.IMESSAGE_WEBHOOK_SECRET || "";
 const PROJECT_ID = process.env.SPECTRUM_PROJECT_ID || "";
 const PROJECT_SECRET = process.env.SPECTRUM_PROJECT_SECRET || "";
 
 if (!PROJECT_ID || !PROJECT_SECRET) {
   console.error("SPECTRUM_PROJECT_ID and SPECTRUM_PROJECT_SECRET are required");
+  process.exit(1);
+}
+
+if (INBOUND_FORWARD_URL && !WEBHOOK_SECRET) {
+  console.error("IMESSAGE_WEBHOOK_SECRET is required for inbound forwarding");
   process.exit(1);
 }
 
@@ -40,15 +46,31 @@ async function sendIMessage(to, text) {
 
 async function forwardInbound(body) {
   if (!INBOUND_FORWARD_URL) return;
-  try {
-    await fetch(INBOUND_FORWARD_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    console.error("inbound forward failed:", err);
+  // Every retry carries the same Photon message ID. The backend commits
+  // mutations once and can retry a failed reply without executing them again.
+  const delays = [0, 500, 1500, 4000];
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      const response = await fetch(INBOUND_FORWARD_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${WEBHOOK_SECRET}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (response.ok && (await response.json()).handled === true) return;
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        console.error("inbound event rejected:", response.status);
+        return;
+      }
+    } catch (err) {
+      console.error("inbound forward attempt failed:", err);
+    }
   }
+  console.error("inbound forwarding retries exhausted");
 }
 
 async function watchInbound() {
@@ -58,7 +80,7 @@ async function watchInbound() {
       if (message?.content?.type !== "text") continue;
       const from = message.sender?.id;
       const text = message.content.text;
-      if (!from || !text) continue;
+      if (!from || !text || !message.id) continue;
       await forwardInbound({
         from,
         text,

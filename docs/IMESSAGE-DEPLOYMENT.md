@@ -34,6 +34,7 @@ APP_PORT=8001                      # existing stack already publishes 8000
 DELIVERY_CHANNEL=imessage
 SPECTRUM_PROJECT_ID=<from https://app.photon.codes project settings>
 SPECTRUM_PROJECT_SECRET=<from https://app.photon.codes project settings>
+IMESSAGE_WEBHOOK_SECRET=<generate with openssl rand -hex 32>
 IMESSAGE_SIDECAR_URL=http://imessage-sidecar:8789
 IMESSAGE_RECIPIENTS=<your iMessage number, e.g. +201099599616>   # admin alerts only
 ```
@@ -74,12 +75,23 @@ then send `/help`. Create your first alert, for example:
 
 Matching new jobs then arrive as iMessages.
 
-## Updating later
+## Automatic deploys
+
+Set the repository secret `IMESSAGE_PROJECT_PATH` to the absolute path of
+this separate checkout on the server. Reuse `SERVER_HOST`, `SERVER_USER`, and
+`SERVER_SSH_KEY` from the main deployment. Use a recent Docker Compose v2
+with `up --wait` support. The checkout must already be on `imessage` and its
+`.env` must include the Photon credentials and webhook secret above.
+
+Pushes to `imessage` (including PR merges) trigger **Deploy iMessage**. It
+fast-forwards the checkout, applies migration 010 to the iMessage database,
+rebuilds the isolated stack and waits for the backend and sidecar health
+checks. It never uses the main checkout or main Compose project.
+
+To update manually after pulling `imessage`:
 
 ```bash
-cd swe-jobs-imessage
-git pull
-docker compose -p swejobs-imessage --profile imessage up -d --build
+bash scripts/deploy_imessage.sh "$PWD"
 ```
 
 ## Notes

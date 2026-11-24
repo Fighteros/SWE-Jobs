@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 _pool: Optional[ThreadedConnectionPool] = None
 _pool_lock = threading.Lock()
+_transaction = threading.local()
 
 
 def _get_pool() -> ThreadedConnectionPool:
@@ -97,6 +98,11 @@ def _get_conn():
     Context manager: borrow a connection from the pool.
     Commits on clean exit, rolls back on exception, always returns to pool.
     """
+    active = getattr(_transaction, "connection", None)
+    if active is not None:
+        yield active
+        return
+
     pool = _get_pool()
     conn = pool.getconn()
     try:
@@ -561,6 +567,44 @@ def get_or_create_imessage_user(address: str) -> dict:
     """
     from core.imessage import imessage_user_telegram_id
     return get_or_create_user(imessage_user_telegram_id(address), address.strip().lower())
+
+
+def process_imessage_event(address: str, message_id: str, text: str) -> None:
+    """Apply a command once; retry only the reply after the command commits."""
+    from bot.imessage_commands import handle_inbound_sync
+    from core.imessage import send_text
+
+    key = (address, message_id)
+    with _get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO imessage_inbound_events (address, message_id) VALUES (%s, %s) "
+            "ON CONFLICT DO NOTHING RETURNING 1", key,
+        )
+        if cur.fetchone():
+            # All synchronous command DB calls share this transaction. If the
+            # command fails, both its changes and the event claim roll back.
+            _transaction.connection = conn
+            try:
+                reply = handle_inbound_sync(address, text)
+            finally:
+                del _transaction.connection
+            cur.execute(
+                "UPDATE imessage_inbound_events SET reply = %s WHERE address = %s AND message_id = %s",
+                (reply, *key),
+            )
+
+    # Serialize concurrent reply attempts, without rolling back the command
+    # if sending fails. NULL means the reply has already been sent.
+    with _get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT reply FROM imessage_inbound_events WHERE address = %s AND message_id = %s FOR UPDATE", key,
+        )
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            send_text(address, row[0])
+            cur.execute(
+                "UPDATE imessage_inbound_events SET reply = NULL WHERE address = %s AND message_id = %s", key,
+            )
 
 
 # =============================================================================

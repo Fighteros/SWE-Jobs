@@ -24,6 +24,8 @@ services:
       - "${APP_PORT:-8000}:8000"
     env_file:
       - .env
+    environment:
+      DELIVERY_CHANNEL: ${DELIVERY_CHANNEL:-telegram}
     labels:
       # autoheal restarts this container when /health goes unhealthy (e.g. the
       # Telegram polling supervisor died and nothing is recovering it).
@@ -77,10 +79,16 @@ services:
   imessage-sidecar:
     build: ./sidecar
     environment:
-      SPECTRUM_PROJECT_ID: ${SPECTRUM_PROJECT_ID:?set SPECTRUM_PROJECT_ID in .env}
-      SPECTRUM_PROJECT_SECRET: ${SPECTRUM_PROJECT_SECRET:?set SPECTRUM_PROJECT_SECRET in .env}
+      SPECTRUM_PROJECT_ID: ${SPECTRUM_PROJECT_ID:-}
+      SPECTRUM_PROJECT_SECRET: ${SPECTRUM_PROJECT_SECRET:-}
+      IMESSAGE_WEBHOOK_SECRET: ${IMESSAGE_WEBHOOK_SECRET:-}
       INBOUND_FORWARD_URL: http://backend:8000/imessage/inbound
       PORT: "8789"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8789/health', {signal: AbortSignal.timeout(3000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     # No ports published — only reachable inside the compose network.
     profiles:
       - imessage
