@@ -3,6 +3,7 @@ Shared HTTP helpers with session reuse, timeouts, and error handling.
 """
 
 import logging
+import os
 import requests
 from core.config import REQUEST_TIMEOUT
 
@@ -71,4 +72,27 @@ def get_text(url: str, params: dict = None, headers: dict = None,
             log.debug(f"GET text {url} failed ({status}): {e}")
         else:
             log.warning(f"GET text {url} failed: {e}")
+        return None
+
+
+def get_public_html(url: str, params: dict = None, headers: dict = None,
+                    timeout: int = REQUEST_TIMEOUT) -> str | None:
+    """Fetch public listing HTML; switching transport does not bypass denials."""
+    if os.getenv("JOB_HTML_TRANSPORT", "requests") != "scrapling":
+        return get_text(url, params=params, headers=headers, timeout=timeout)
+
+    from curl_cffi.requests.exceptions import RequestException
+    from scrapling.fetchers import Fetcher
+
+    try:
+        response = Fetcher.get(
+            url, params=params, headers={"User-Agent": "SWE-Jobs/1.0", **(headers or {})},
+            timeout=timeout, retries=1, impersonate="", stealthy_headers=False,
+        )
+        if not 200 <= response.status < 300:
+            log.warning("Public listing GET rejected: HTTP %s", response.status)
+            return None
+        return response.body.decode(response.encoding or "utf-8", errors="replace")
+    except (RequestException, LookupError, ValueError) as exc:
+        log.warning("Public listing GET failed: %s", type(exc).__name__)
         return None

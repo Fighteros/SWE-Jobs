@@ -8,7 +8,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.http_utils import get_text
+from sources.http_utils import get_public_html as get_text
 from sources.playwright_utils import get_browser_page
 
 log = logging.getLogger(__name__)

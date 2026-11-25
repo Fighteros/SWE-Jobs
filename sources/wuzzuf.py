@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from core.config import WUZZUF_MAX_PAGES
 from core.models import Job
-from sources.http_utils import get_text
+from sources.http_utils import get_public_html as get_text
 
 log = logging.getLogger(__name__)
 
