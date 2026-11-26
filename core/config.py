@@ -63,6 +63,7 @@ ADZUNA_APP_KEY: str = os.getenv("ADZUNA_APP_KEY", "")
 FINDWORK_API_KEY: str = os.getenv("FINDWORK_API_KEY", "")
 JOOBLE_API_KEY: str = os.getenv("JOOBLE_API_KEY", "")
 REED_API_KEY: str = os.getenv("REED_API_KEY", "")
+CAREERJET_API_KEY: str = os.getenv("CAREERJET_API_KEY", "")
 MUSE_API_KEY: str = os.getenv("MUSE_API_KEY", "")
 
 # =============================================================================

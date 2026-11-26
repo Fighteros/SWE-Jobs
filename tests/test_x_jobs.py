@@ -1,6 +1,6 @@
 """
 Tests for sources/x_jobs.py — pure parsing/extraction functions.
-Playwright-dependent functions (fetch_x_jobs, _scrape_search, _parse_tweet)
+Browser-dependent functions (fetch_x_jobs, _scrape_search, _parse_tweet)
 are not tested here as they require a live browser.
 """
 

@@ -20,6 +20,8 @@ services:
 
   backend:
     build: .
+    # Chromium crashes with Docker's default 64MB /dev/shm.
+    shm_size: "1gb"
     ports:
       - "${APP_PORT:-8000}:8000"
     env_file:
@@ -42,6 +44,8 @@ services:
 
   bot:
     build: .
+    # Chromium crashes with Docker's default 64MB /dev/shm.
+    shm_size: "1gb"
     command: python main.py
     env_file:
       - .env

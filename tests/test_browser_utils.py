@@ -1,4 +1,4 @@
-from sources.playwright_utils import normalize_cookies
+from sources.browser_utils import normalize_cookies
 
 
 def test_normalize_browser_export_cookies():

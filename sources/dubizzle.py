@@ -8,8 +8,8 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.http_utils import get_text
-from sources.playwright_utils import get_browser_page
+from sources.http_utils import get_public_html as get_text
+from sources.browser_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ REQUEST_DELAY = 3
 
 
 def fetch_dubizzle() -> list[Job]:
-    """Fetch jobs from Dubizzle using Playwright."""
+    """Fetch jobs from Dubizzle using Scrapling."""
     jobs = []
     seen_urls = set()
 

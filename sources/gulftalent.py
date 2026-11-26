@@ -1,13 +1,13 @@
 """
-Gulf Talent — Playwright-based scraper for gulftalent.com (Gulf region job board).
-Uses Playwright to bypass bot protection and render JS-heavy pages.
+Gulf Talent — Scrapling-browser-based scraper for gulftalent.com (Gulf region job board).
+Uses Scrapling StealthySession to bypass bot protection and render JS-heavy pages.
 """
 
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.playwright_utils import get_browser_page
+from sources.browser_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ SEARCHES = [
 
 
 def fetch_gulftalent() -> list[Job]:
-    """Fetch jobs from Gulf Talent using Playwright."""
+    """Fetch jobs from Gulf Talent using Scrapling."""
     jobs = []
     seen_urls = set()
 

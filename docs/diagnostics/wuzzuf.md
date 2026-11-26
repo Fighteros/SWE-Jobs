@@ -1,35 +1,26 @@
-# Wuzzuf collection diagnosis
+# Wuzzuf access
 
-## Verified on 2026-11-23
+Wuzzuf sits behind Cloudflare. Plain HTTP clients (requests, and Scrapling's
+plain `Fetcher`) get HTTP 403 and a "Just a moment" page from datacenter IPs.
 
-- Deploy #57 completed successfully for `adce3d8`; its log reported backend healthy at 12:03:17 UTC. This clears the earlier container-build blocker, but `/health` is not a per-source ingestion test.
-- The fork and upstream both fetch public category pages with `requests`. The histories have diverged, so merging upstream wholesale is not a targeted Wuzzuf repair.
-- A direct request from the investigation environment received HTTP 403 and a Cloudflare interstitial. Plain headless Playwright received the same challenge. An interactive browser could display the category. These results do not establish the response seen by the production server.
-- A captured public category page contained 20 listings. Before this change the parser returned 19, skipping an `/internship/` URL. It also read only the work-type/workplace block as tags, losing later skills and the SSR keyword list. Skill loss can change filtering scores and routing.
-- HTTP failures returned an empty list without raising. The existing retry/circuit-breaker wrapper then recorded a successful source fetch. Challenge pages served as HTTP 200 had the same problem.
+## What the code does now
 
-## What this change does
+`sources/http_utils.get_protected_html()`:
 
-Collect internship links, retain card and SSR skills, and report an entirely failed Wuzzuf fetch as a source error. Explicit zero-result pages still return a normal empty list. Partial results are retained with a warning.
+1. Tries Scrapling's `Fetcher` (Chrome TLS impersonation). This is fast but is
+   normally challenged.
+2. On 403/503 or a challenge page, retries in one shared Scrapling
+   `StealthySession` with `solve_cloudflare=True` (patchright browser, managed
+   Turnstile solver). The session is reused for every Wuzzuf page in a run and
+   closed at exit.
 
-This does **not** bypass Cloudflare or establish that live production ingestion is restored. Adding plain Playwright as a fallback would not be a verified fix, so it is not included. No browser session, cookies, login, or external proxy is required or added by this PR.
+Verified from a fresh sandbox: the plain Fetcher returned 403; the
+StealthySession returned HTTP 200 with job cards, about 9 seconds per page
+after a roughly 15 second start.
 
-## Production verification after review
+## Caveats
 
-Use the existing server access to inspect recent backend logs for `Wuzzuf`, `wuzzuf`, `403`, `access challenge`, `partial results`, and `collection failed`. Compare source-health records and new Wuzzuf jobs over a collection cycle. Do not infer source health only from a successful deploy or a healthy HTTP endpoint.
-
-If the server is challenged too, a supported access route that works from that server is still needed. Repeated HTTP/headless retries are not a demonstrated solution. Keep the circuit breaker enabled rather than treating the block as zero available jobs.
-
-## Validation
-
-- Regression tests cover internships, card skills, SSR keywords, empty-result validation, challenges, transport failures, partial results, and circuit-breaker failure recording.
-- The corrected parser returned all 20 listings from the captured category, including its internship, with skill metadata.
-- Tests ran on Linux x86_64 / Python 3.10, not on the production aarch64 container. The production network response and end-to-end ingestion remain unverified.
-
-Sources:
-
-- https://github.com/Fighteros/SWE-Jobs/actions/runs/45170482423
-- https://github.com/Fighteros/SWE-Jobs/actions/runs/45170482423/job/137678393786
-- https://github.com/Fighteros/SWE-Jobs
-- https://github.com/AbdullahSoudi/SWE-Jobs
-- https://wuzzuf.net/a/Software-Development-Jobs-in-Egypt
+- Cloudflare scores IP reputation. A residential or less-flagged IP passes more
+  easily than a cloud server. If the server IP is still blocked, set a proxy on
+  the session (Scrapling accepts `proxy=`) rather than adding another scraper.
+- Browser deps come from `scrapling install` in the Dockerfile.

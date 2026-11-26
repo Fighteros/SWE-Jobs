@@ -7,9 +7,10 @@ Caches successful and 404 responses for 24h. Network errors are not cached.
 import logging
 import time
 from typing import TYPE_CHECKING, Optional
+import json
 from urllib.parse import urlencode
 
-import requests
+from scrapling.fetchers import Fetcher
 
 from core.egytech_mapping import SENIORITY_TO_LEVEL, TOPIC_TO_TITLE
 
@@ -61,19 +62,19 @@ def get_stats(
 
     url = f"{_BASE}/stats?{urlencode(params)}"
     try:
-        resp = requests.get(url, timeout=_TIMEOUT)
-    except requests.RequestException as e:
+        resp = Fetcher.get(url, timeout=_TIMEOUT, retries=1, impersonate="chrome")
+    except Exception as e:
         log.warning(f"egytech network error: {e}")
         return None
 
-    if resp.status_code == 404:
+    if resp.status == 404:
         _cache[key] = (now, None)
         return None
-    if resp.status_code != 200:
-        log.warning(f"egytech unexpected status {resp.status_code} for {url}")
+    if resp.status != 200:
+        log.warning(f"egytech unexpected status {resp.status} for {url}")
         return None
 
-    data = resp.json()
+    data = json.loads(resp.body.decode(resp.encoding or "utf-8", errors="replace"))
     _cache[key] = (now, data)
     return data
 

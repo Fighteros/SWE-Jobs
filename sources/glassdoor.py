@@ -1,5 +1,5 @@
 """
-Glassdoor — Playwright-based scraper for glassdoor.com job listings.
+Glassdoor — Scrapling-browser-based scraper for glassdoor.com job listings.
 Searches for software/tech roles across target regions.
 """
 
@@ -7,7 +7,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.playwright_utils import get_browser_page
+from sources.browser_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ FRESHNESS = "fromAge=1"
 
 
 def fetch_glassdoor() -> list[Job]:
-    """Fetch jobs from Glassdoor using Playwright."""
+    """Fetch jobs from Glassdoor using Scrapling."""
     jobs = []
     seen_urls = set()
 

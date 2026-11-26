@@ -34,6 +34,12 @@ from sources.dubizzle import fetch_dubizzle
 from sources.x_jobs import fetch_x_jobs
 from sources.indeed import fetch_indeed
 from sources.gulftalent import fetch_gulftalent
+from sources.hackernews import fetch_hackernews
+from sources.jobscollider import fetch_jobscollider
+from sources.landingjobs import fetch_landingjobs
+from sources.jobspresso import fetch_jobspresso
+from sources.nodesk import fetch_nodesk
+from sources.careerjet import fetch_careerjet
 
 # (display_name, source_key, fetch_function)
 ALL_FETCHERS = [
@@ -69,4 +75,10 @@ ALL_FETCHERS = [
     ("X (Twitter)",      "x",                fetch_x_jobs),
     ("Indeed",           "indeed",           fetch_indeed),
     ("GulfTalent",       "gulftalent",       fetch_gulftalent),
+    ("Hacker News (Who is hiring)","hackernews",      fetch_hackernews),
+    ("Remote First Jobs","jobscollider",    fetch_jobscollider),
+    ("Landing.jobs",     "landingjobs",     fetch_landingjobs),
+    ("Jobspresso",       "jobspresso",      fetch_jobspresso),
+    ("NoDesk",           "nodesk",          fetch_nodesk),
+    ("Careerjet",        "careerjet",       fetch_careerjet),
 ]

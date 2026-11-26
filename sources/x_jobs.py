@@ -1,5 +1,5 @@
 """
-X (Twitter) — Playwright-based scraper for job posts on x.com.
+X (Twitter) — Scrapling-browser-based scraper for job posts on x.com.
 
 Scrapes public search results for tech job hashtags and keywords.
 Note: X may require login for full search results. If no results are found,
@@ -14,7 +14,7 @@ import re
 import time
 from datetime import datetime, timezone
 from core.models import Job
-from sources.playwright_utils import get_browser_page, normalize_cookies
+from sources.browser_utils import get_browser_page, normalize_cookies
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ SCROLL_PAUSE = 2
 
 
 def fetch_x_jobs() -> list[Job]:
-    """Fetch job posts from X/Twitter search using Playwright."""
+    """Fetch job posts from X/Twitter search using Scrapling."""
     jobs = []
     seen_urls = set()
 
@@ -78,7 +78,7 @@ def _load_cookies(page, cookies_file: str):
         page.goto("https://x.com", wait_until="domcontentloaded")
         with open(cookies_file, "r") as f:
             cookies = json.load(f)
-        # Normalize to Playwright cookie format
+        # Normalize to browser cookie format
         pw_cookies = normalize_cookies(cookies, ".x.com")
         if not pw_cookies:
             log.warning("X: cookie file contains no usable cookies.")
