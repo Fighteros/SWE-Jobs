@@ -68,4 +68,5 @@ REMOTE_PATTERNS = {
 # Sources that are exclusively remote job boards
 REMOTE_ONLY_SOURCES = {
     "remotive", "remoteok", "wwr", "workingnomads", "findwork", "reed",
+    "jobscollider", "jobspresso", "nodesk",
 }

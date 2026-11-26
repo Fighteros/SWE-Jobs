@@ -77,6 +77,7 @@ All API keys are optional. Sources are skipped if their key is absent — the bo
 | `FINDWORK_API_KEY` | Findwork.dev | [Findwork.dev](https://findwork.dev/developers/) |
 | `JOOBLE_API_KEY` | Jooble | [Jooble API](https://jooble.org/api/about) |
 | `REED_API_KEY` | Reed.co.uk | [Reed Developers](https://www.reed.co.uk/developers) |
+| `CAREERJET_API_KEY` | Careerjet | [Careerjet publisher account](https://www.careerjet.com/partners/api/) |
 | `MUSE_API_KEY` | The Muse | [The Muse API](https://www.themuse.com/developers) |
 
 Sources that don't require keys: Remotive, Himalayas, Jobicy, RemoteOK, Arbeitnow, We Work Remotely, Working Nomads, LinkedIn, USAJobs.

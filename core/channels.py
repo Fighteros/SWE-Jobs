@@ -424,6 +424,11 @@ SOURCE_DISPLAY = {
     "indeed": "Indeed",
     "gulftalent": "GulfTalent",
     "naukrigulf": "NaukriGulf",
+    "hackernews": "Hacker News (Who is hiring)",
+    "jobscollider": "Remote First Jobs",
+    "landingjobs": "Landing.jobs",
+    "jobspresso": "Jobspresso",
+    "nodesk": "NoDesk",
 }
 
 # ─── Source Icons (emoji per source) ────────────────────────
@@ -460,4 +465,9 @@ SOURCE_ICON = {
     "indeed": "🟦",
     "gulftalent": "🌊",
     "naukrigulf": "🌴",
+    "hackernews": "🟧",
+    "jobscollider": "🧭",
+    "landingjobs": "🛬",
+    "jobspresso": "☕",
+    "nodesk": "🏝️",
 }

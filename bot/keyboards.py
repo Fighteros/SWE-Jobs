@@ -152,6 +152,12 @@ SOURCE_OPTIONS = [
     ("recruitee", "Recruitee"),
     ("ashby", "Ashby"),
     ("smartrecruiters", "SmartRecruiters"),
+    ("hackernews", "Hacker News"),
+    ("jobscollider", "Remote First Jobs"),
+    ("landingjobs", "Landing.jobs"),
+    ("jobspresso", "Jobspresso"),
+    ("nodesk", "NoDesk"),
+    ("careerjet", "Careerjet"),
 ]
 
 
