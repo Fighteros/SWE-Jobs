@@ -5,7 +5,7 @@ SWE-Jobs runs on a Linux VPS with Docker Compose. The backend and PostgreSQL com
 ## Requirements
 
 - Linux VPS with Docker Engine and Docker Compose plugin.
-- 2 GB RAM recommended because browser-based job sources use Playwright.
+- 2 GB RAM recommended because browser-based job sources use the Scrapling stealth browser.
 - Telegram bot token, group ID, topic thread IDs, and any optional job-source API keys.
 
 ## Initial setup

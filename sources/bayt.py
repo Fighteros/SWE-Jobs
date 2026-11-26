@@ -1,13 +1,13 @@
 """
-Bayt.com — Playwright-based scraper for the Middle East's largest job board.
-Uses Playwright to bypass bot protection and render JS-heavy pages.
+Bayt.com — Scrapling-browser-based scraper for the Middle East's largest job board.
+Uses Scrapling StealthySession to bypass bot protection and render JS-heavy pages.
 """
 
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.playwright_utils import get_browser_page
+from sources.browser_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ SEARCHES = [
 
 
 def fetch_bayt() -> list[Job]:
-    """Fetch jobs from Bayt.com using Playwright."""
+    """Fetch jobs from Bayt.com using Scrapling."""
     jobs = []
     seen_urls = set()
 

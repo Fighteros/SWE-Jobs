@@ -1,5 +1,6 @@
 """Unit tests for core.egytech HTTP client."""
 
+import json
 import time
 from unittest.mock import patch, MagicMock
 import pytest
@@ -17,8 +18,9 @@ def _clear_cache():
 
 def _mock_response(status_code: int, json_data: dict | None = None):
     resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data or {}
+    resp.status = status_code
+    resp.encoding = "utf-8"
+    resp.body = json.dumps(json_data or {}).encode()
     return resp
 
 
@@ -31,7 +33,7 @@ class TestGetStats:
             },
             "buckets": [{"bucket": "20-25K", "count": 19}],
         }
-        with patch("core.egytech.requests.get", return_value=_mock_response(200, payload)) as mock_get:
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(200, payload)) as mock_get:
             result = get_stats(title="backend", level="mid_level")
         assert result is not None
         assert result["stats"]["median"] == 33800
@@ -44,37 +46,35 @@ class TestGetStats:
         assert "level=mid_level" in called_url
 
     def test_returns_none_on_404(self):
-        with patch("core.egytech.requests.get", return_value=_mock_response(404)):
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(404)):
             assert get_stats(title="backend", level="senior_principal") is None
 
     def test_returns_none_on_network_error(self):
-        import requests as r
-        with patch("core.egytech.requests.get", side_effect=r.RequestException("boom")):
+        with patch("core.egytech.Fetcher.get", side_effect=OSError("boom")):
             assert get_stats(title="backend") is None
 
     def test_caches_successful_response(self):
         payload = {"stats": {"median": 1}, "buckets": []}
-        with patch("core.egytech.requests.get", return_value=_mock_response(200, payload)) as mock_get:
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(200, payload)) as mock_get:
             get_stats(title="backend", level="mid_level")
             get_stats(title="backend", level="mid_level")
         assert mock_get.call_count == 1
 
     def test_caches_404_response(self):
-        with patch("core.egytech.requests.get", return_value=_mock_response(404)) as mock_get:
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(404)) as mock_get:
             get_stats(title="backend", level="senior_principal")
             get_stats(title="backend", level="senior_principal")
         assert mock_get.call_count == 1
 
     def test_does_not_cache_network_errors(self):
-        import requests as r
-        with patch("core.egytech.requests.get", side_effect=r.RequestException("boom")) as mock_get:
+        with patch("core.egytech.Fetcher.get", side_effect=OSError("boom")) as mock_get:
             get_stats(title="backend")
             get_stats(title="backend")
         assert mock_get.call_count == 2
 
     def test_cache_expires_after_ttl(self):
         payload = {"stats": {"median": 1}, "buckets": []}
-        with patch("core.egytech.requests.get", return_value=_mock_response(200, payload)) as mock_get:
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(200, payload)) as mock_get:
             get_stats(title="backend", level="mid_level")
             # Manually expire the cache entry
             key = next(iter(_cache))
@@ -85,7 +85,7 @@ class TestGetStats:
 
     def test_omits_optional_params_when_none(self):
         payload = {"stats": {}, "buckets": []}
-        with patch("core.egytech.requests.get", return_value=_mock_response(200, payload)) as mock_get:
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(200, payload)) as mock_get:
             get_stats(title="backend")
         url = mock_get.call_args[0][0]
         assert "level=" not in url
@@ -121,12 +121,12 @@ class TestMarketSalaryForJob:
                       "p20Compensation": 21200, "p75Compensation": 44000, "p90Compensation": 63000},
             "buckets": [],
         }
-        with patch("core.egytech.requests.get", return_value=_mock_response(200, payload)):
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(200, payload)):
             job = self._job()
             result = market_salary_for_job(job)
         assert result == "EGP 21k–44k/mo"
 
     def test_returns_none_when_egytech_returns_none(self):
-        with patch("core.egytech.requests.get", return_value=_mock_response(404)):
+        with patch("core.egytech.Fetcher.get", return_value=_mock_response(404)):
             job = self._job()
             assert market_salary_for_job(job) is None

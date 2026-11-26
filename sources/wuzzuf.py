@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from core.config import WUZZUF_MAX_PAGES
 from core.models import Job
-from sources.http_utils import get_public_html as get_text
+from sources.http_utils import get_protected_html as get_text
 
 log = logging.getLogger(__name__)
 
@@ -108,11 +108,14 @@ def fetch_wuzzuf() -> list[Job]:
 
 
 def _is_challenge(page_html: str) -> bool:
-    return bool(re.search(
-        r"<title[^>]*>\s*(?:Just a moment|Access denied)|"
-        r"id=[\"']challenge-form[\"']|/cdn-cgi/challenge-platform/",
+    if re.search(
+        r"<title[^>]*>\s*(?:Just a moment|Access denied)|id=[\"']challenge-form[\"']",
         page_html, re.IGNORECASE,
-    ))
+    ):
+        return True
+    # Pages that passed Cloudflare still embed its challenge-platform script, so
+    # that marker only counts when no job links are present.
+    return "/cdn-cgi/challenge-platform/" in page_html and not JOB_LINK_RE.search(page_html)
 
 
 def _is_empty_results(page_html: str) -> bool:

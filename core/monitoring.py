@@ -280,9 +280,9 @@ def send_admin_alert_sync(message: str, timeout: float = 5.0) -> bool:
         return False
 
     try:
-        import requests
+        from scrapling.fetchers import Fetcher
 
-        resp = requests.post(
+        resp = Fetcher.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
             json={
                 "chat_id": int(ADMIN_TELEGRAM_ID),
@@ -290,9 +290,10 @@ def send_admin_alert_sync(message: str, timeout: float = 5.0) -> bool:
                 "parse_mode": "HTML",
             },
             timeout=timeout,
+            retries=1,
         )
-        if resp.status_code != 200:
-            log.error("Sync admin alert failed: HTTP %s", resp.status_code)
+        if resp.status != 200:
+            log.error("Sync admin alert failed: HTTP %s", resp.status)
             return False
         return True
     except Exception as e:

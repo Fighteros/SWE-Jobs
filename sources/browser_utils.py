@@ -1,8 +1,11 @@
 """
-Shared Playwright browser helpers for scrapers that need JS rendering.
+Shared browser helpers for scrapers that need JS rendering.
+
+The browser is Scrapling's StealthySession (patchright, anti-detection patches,
+Cloudflare solving). The page it yields exposes the usual page API.
 
 Usage:
-    from sources.playwright_utils import get_browser_page
+    from sources.browser_utils import get_browser_page
 
     with get_browser_page() as page:
         page.goto("https://example.com")
@@ -13,7 +16,7 @@ import logging
 import re
 from pathlib import Path
 from contextlib import contextmanager
-from playwright.sync_api import sync_playwright
+from scrapling.fetchers import StealthySession
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +25,7 @@ PAGE_TIMEOUT = 30_000
 
 
 def normalize_cookies(cookies, default_domain: str) -> list[dict]:
-    """Convert common browser-export cookie formats to Playwright cookies."""
+    """Convert common browser-export cookie formats to browser cookies."""
     if isinstance(cookies, dict):
         cookies = cookies.get("cookies", [])
     if not isinstance(cookies, list):
@@ -56,52 +59,36 @@ def normalize_cookies(cookies, default_domain: str) -> list[dict]:
 @contextmanager
 def get_browser_page(headless: bool = True, user_data_dir: str = ""):
     """
-    Context manager that yields a Playwright page.
-    Launches Chromium, creates a single page, and tears everything down on exit.
+    Context manager that yields a page from a Scrapling StealthySession.
+    Starts the stealth browser, opens one page, and tears everything down on exit.
     """
-    pw = sync_playwright().start()
+    options = {
+        "headless": headless,
+        "solve_cloudflare": True,
+        "network_idle": False,
+        "timeout": PAGE_TIMEOUT,
+        "locale": "en-US",
+    }
+    if user_data_dir:
+        Path(user_data_dir).mkdir(parents=True, exist_ok=True)
+        options["user_data_dir"] = str(user_data_dir)
+    session = StealthySession(**options)
+    page = None
     try:
-        browser = None
-        launch_options = {"headless": headless}
-        if user_data_dir:
-            profile = Path(user_data_dir)
-            profile.mkdir(parents=True, exist_ok=True)
-            context = pw.chromium.launch_persistent_context(
-                str(profile),
-                **launch_options,
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/125.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 900},
-                locale="en-US",
-            )
-        else:
-            browser = pw.chromium.launch(**launch_options)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/125.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 900},
-                locale="en-US",
-            )
-        page = context.new_page()
+        session.start()
+        page = session.context.new_page()
         page.set_default_timeout(PAGE_TIMEOUT)
         yield page
     except Exception as e:
-        log.error(f"Playwright browser error: {e}")
+        log.error(f"Browser error: {e}")
         raise
     finally:
         try:
-            context.close()
+            if page:
+                page.close()
         except Exception:
             pass
         try:
-            if browser:
-                browser.close()
+            session.close()
         except Exception:
             pass
-        pw.stop()

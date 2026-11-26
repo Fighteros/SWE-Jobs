@@ -23,10 +23,10 @@ def test_sync_alert_skips_without_config():
 
 
 def test_sync_alert_posts_to_telegram():
-    resp = MagicMock(status_code=200)
+    resp = MagicMock(status=200)
     with patch.object(monitoring, "ADMIN_TELEGRAM_ID", "123"), \
          patch.object(monitoring, "TELEGRAM_BOT_TOKEN", "tok"), \
-         patch("requests.post", return_value=resp) as mock_post:
+         patch("scrapling.fetchers.Fetcher.post", return_value=resp) as mock_post:
         assert monitoring.send_admin_alert_sync("backend down") is True
         mock_post.assert_called_once()
         call = mock_post.call_args
@@ -37,7 +37,7 @@ def test_sync_alert_posts_to_telegram():
 def test_sync_alert_never_raises():
     with patch.object(monitoring, "ADMIN_TELEGRAM_ID", "123"), \
          patch.object(monitoring, "TELEGRAM_BOT_TOKEN", "tok"), \
-         patch("requests.post", side_effect=ConnectionError("no network")):
+         patch("scrapling.fetchers.Fetcher.post", side_effect=ConnectionError("no network")):
         assert monitoring.send_admin_alert_sync("backend down") is False
 
 

@@ -73,12 +73,7 @@ def fetch_linkedin() -> list[Job]:
 
     for params in SEARCHES:
         params["start"] = "0"
-        html = get_text(SEARCH_URL, params=params, headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36"
-            ),
-        })
+        html = get_text(SEARCH_URL, params=params)
 
         if not html:
             log.warning(f"LinkedIn: no response for {params.get('keywords')}")

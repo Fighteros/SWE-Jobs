@@ -1,5 +1,6 @@
 """Tests for /api/stats/salary egytech-backed endpoint."""
 
+import json
 from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
@@ -31,9 +32,10 @@ def test_returns_egytech_payload_for_known_role(client):
         },
         "buckets": [{"bucket": "20-25K", "count": 19}],
     }
-    with patch("core.egytech.requests.get") as mock_get:
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = payload
+    with patch("core.egytech.Fetcher.get") as mock_get:
+        mock_get.return_value.status = 200
+        mock_get.return_value.encoding = "utf-8"
+        mock_get.return_value.body = json.dumps(payload).encode()
         resp = client.get("/api/stats/salary?role=backend&seniority=mid")
     assert resp.status_code == 200
     body = resp.json()
@@ -59,8 +61,8 @@ def test_unmapped_role_returns_matched_false(client):
 
 
 def test_egytech_404_returns_matched_false(client):
-    with patch("core.egytech.requests.get") as mock_get:
-        mock_get.return_value.status_code = 404
+    with patch("core.egytech.Fetcher.get") as mock_get:
+        mock_get.return_value.status = 404
         resp = client.get("/api/stats/salary?role=backend&seniority=intern")
     assert resp.status_code == 200
     body = resp.json()
@@ -73,9 +75,10 @@ def test_yoe_filter_passed_through(client):
     payload = {"stats": {"totalCount": 5, "median": 100,
                          "p20Compensation": 80, "p75Compensation": 120, "p90Compensation": 140},
                "buckets": []}
-    with patch("core.egytech.requests.get") as mock_get:
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = payload
+    with patch("core.egytech.Fetcher.get") as mock_get:
+        mock_get.return_value.status = 200
+        mock_get.return_value.encoding = "utf-8"
+        mock_get.return_value.body = json.dumps(payload).encode()
         client.get("/api/stats/salary?role=backend&yoe_from=2&yoe_to=5")
     url = mock_get.call_args[0][0]
     assert "yoe_from_included=2" in url

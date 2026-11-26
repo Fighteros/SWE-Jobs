@@ -1,14 +1,10 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
-import pytest
-
 from sources.http_utils import get_public_html
 
 
-def test_scrapling_public_html_and_access_denial(monkeypatch):
-    pytest.importorskip("scrapling.fetchers")
-    monkeypatch.setenv("JOB_HTML_TRANSPORT", "scrapling")
+def test_scrapling_public_html_and_access_denial():
     paths = []
 
     class Handler(BaseHTTPRequestHandler):

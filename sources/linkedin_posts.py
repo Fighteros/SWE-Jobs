@@ -1,5 +1,5 @@
 """
-LinkedIn Posts — Playwright-based scraper for job posts shared on LinkedIn feed.
+LinkedIn Posts — Scrapling-browser-based scraper for job posts shared on LinkedIn feed.
 
 Scrapes public LinkedIn search for posts containing hiring keywords.
 Similar to x_jobs.py but for LinkedIn. May require authentication via
@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 from core.models import Job
-from sources.playwright_utils import get_browser_page, normalize_cookies
+from sources.browser_utils import get_browser_page, normalize_cookies
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ POST_SELECTOR = (
 
 
 def fetch_linkedin_posts() -> list[Job]:
-    """Fetch job posts from LinkedIn feed search using Playwright."""
+    """Fetch job posts from LinkedIn feed search using Scrapling."""
     jobs = []
     seen_urls = set()
 

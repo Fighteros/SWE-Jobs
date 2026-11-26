@@ -1,13 +1,13 @@
 """
-NaukriGulf — Playwright-based scraper for naukrigulf.com (Gulf region job board).
-Uses Playwright to render JS-heavy pages and parse job listings.
+NaukriGulf — Scrapling-browser-based scraper for naukrigulf.com (Gulf region job board).
+Uses Scrapling StealthySession to render JS-heavy pages and parse job listings.
 """
 
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from core.models import Job
-from sources.playwright_utils import get_browser_page
+from sources.browser_utils import get_browser_page
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ SEARCHES = [
 
 
 def fetch_naukrigulf() -> list[Job]:
-    """Fetch jobs from NaukriGulf using Playwright."""
+    """Fetch jobs from NaukriGulf using Scrapling."""
     jobs = []
     seen_urls = set()
 
